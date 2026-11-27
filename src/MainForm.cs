@@ -197,6 +197,12 @@ namespace Muse
             t0.Tick += delegate { t0.Stop(); CheckNodes(); };
             t0.Start();
 
+            // 运行期间每 6 小时查一次更新（绕开“每天首次”的日期门）
+            var updateTimer = new System.Windows.Forms.Timer();
+            updateTimer.Interval = 6 * 60 * 60 * 1000;
+            updateTimer.Tick += delegate { CheckUpdate(false, true); };
+            updateTimer.Start();
+
             _lineTimer = new System.Windows.Forms.Timer();
             _lineTimer.Interval = 5000;
             _lineTimer.Tick += delegate { PollLine(); };
@@ -546,16 +552,18 @@ namespace Muse
             Activate();
         }
 
-        // 自动更新：每天首次启动时静默查一次；点“检查更新”按钮随时手动查
+        // 自动更新：每天首次启动时静默查一次；运行期间每 6 小时再查一次；点“检查更新”按钮随时手动查
         bool _updateCheckRunning = false;
 
-        void CheckUpdate(bool manual)
+        void CheckUpdate(bool manual) { CheckUpdate(manual, false); }
+
+        void CheckUpdate(bool manual, bool bypassDailyGate)
         {
             if (_updateCheckRunning) return;
             try
             {
                 string today = DateTime.Now.ToString("yyyy-MM-dd");
-                if (!manual && App.GetStr(_settings, "update_last_check", "") == today) return;
+                if (!manual && !bypassDailyGate && App.GetStr(_settings, "update_last_check", "") == today) return;
                 App.Set(_settings, "update_last_check", today);
                 App.SaveSettings(_settings);
             }
@@ -573,10 +581,12 @@ namespace Muse
                     {
                         BeginInvoke(new Action(delegate
                         {
-                            if (MessageBox.Show(this, "发现新版本 " + ver + "（当前 " + App.Version + "）。\r\n" + notes
-                                + "\r\n\r\n现在下载并更新吗？更新时会重新编译，约一两分钟，编好后自动重启。",
-                                "发现新版本", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
-                                DownloadAndInstallUpdate(ver);
+                            // 提示框 10 秒无操作自动取消，不强制更新
+                            using (UpdatePromptForm f = new UpdatePromptForm(ver, notes))
+                            {
+                                if (f.ShowDialog(this) == DialogResult.OK)
+                                    DownloadAndInstallUpdate(ver);
+                            }
                         }));
                     }
                     else if (manual)
