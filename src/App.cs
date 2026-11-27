@@ -12,7 +12,7 @@ namespace Muse
     static class App
     {
         public const string ShellVersion = "2026-11-25-1255";
-        public const string Version = "1.0.7";   // C# 版自己的版本号，自动更新靠它比对
+        public const string Version = "1.0.8";   // C# 版自己的版本号，自动更新靠它比对
         public const string UpdateUrl = "https://raw.githubusercontent.com/waxtdm/muse-csharp/main/version.json";
         public const string UpdateSourceZip = "https://codeload.github.com/waxtdm/muse-csharp/zip/refs/heads/main";
         public const int CorePort = 17890;      // mihomo mixed-port

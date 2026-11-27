@@ -88,6 +88,15 @@ namespace Muse
             _browserArgs = browserArgs;
             _launchedGuess = launchedGuess;
             Text = "Muse";
+            // 左上角图标：Muse 小幽灵（内嵌资源 res/muse.ico）
+            try
+            {
+                using (Stream rs = typeof(App).Assembly.GetManifestResourceStream("Muse.muse.ico"))
+                {
+                    if (rs != null) Icon = new Icon(rs);
+                }
+            }
+            catch { }
             Size = new Size(1280, 900);
             StartPosition = FormStartPosition.CenterScreen;
 
@@ -97,8 +106,10 @@ namespace Muse
             _topPanel = new Panel();
             _topPanel.Dock = DockStyle.Top;
             _topPanel.Height = 36;
+            _topPanel.BackColor = Color.FromArgb(199, 237, 204); // 豆沙绿护眼色
             _bar.Dock = DockStyle.Fill;
             _bar.AutoSize = false;
+            _bar.BackColor = Color.FromArgb(199, 237, 204);
             _topPanel.Controls.Add(_bar);
             _nodeLabel = new Label();
             _nodeLabel.Dock = DockStyle.Right;
@@ -143,7 +154,7 @@ namespace Muse
 
             // 最小化后藏到右下角托盘：点最小化按钮即隐藏窗口，双击托盘图标恢复
             _tray = new NotifyIcon();
-            _tray.Icon = SystemIcons.Application;
+            _tray.Icon = Icon ?? SystemIcons.Application;
             _tray.Text = "Muse";
             _tray.Visible = true;
             var trayMenu = new ContextMenuStrip();
