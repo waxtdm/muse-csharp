@@ -169,6 +169,8 @@ namespace Muse
 
         // 更新器脚本（放在新编译出的目录里，启动时传：update.bat "包根目录" "新编译目录"）
         // 等旧进程退出 -> 把新树拷过去 -> 启动新 exe -> 退出；临时目录由新启动的程序自己清
+        // 关键：start 必须带 /D 指定新进程的工作目录，否则新进程会继承 cmd 的工作目录（临时编译目录），
+        // 程序自己占着临时文件夹不放，下次更新删目录就报“正由另一进程使用”（v9->v10 实测翻车）
         public static string UpdateBatText()
         {
             return "@echo off\r\n"
@@ -186,7 +188,7 @@ namespace Muse
                 + ")\r\n"
                 + ":copy\r\n"
                 + "xcopy /y /e \"%SRC%\\*\" \"%APP%\\\"\r\n"
-                + "if exist \"%APP%\\bin\\Muse.exe\" (start \"\" \"%APP%\\bin\\Muse.exe\") else (start \"\" \"%APP%\\Muse.exe\")\r\n"
+                + "if exist \"%APP%\\bin\\Muse.exe\" (start \"\" /D \"%APP%\\bin\" \"%APP%\\bin\\Muse.exe\") else (start \"\" /D \"%APP%\" \"%APP%\\Muse.exe\")\r\n"
                 + "exit\r\n";
         }
     }

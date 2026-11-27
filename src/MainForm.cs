@@ -607,10 +607,19 @@ namespace Muse
             ShowStatus("正在下载新版本 " + ver + " 的源码包，请稍候…", 0);
             System.Threading.Tasks.Task.Run(delegate ()
             {
-                string tmp = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "MuseUpdate");
+                // 每个版本用独立临时目录，旧目录被占住也挡不住新更新；旧目录只尽力清，清不掉就留着
+                string tmp = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "MuseUpdate-" + ver);
                 try
                 {
-                    if (System.IO.Directory.Exists(tmp)) System.IO.Directory.Delete(tmp, true);
+                    try
+                    {
+                        foreach (string d in System.IO.Directory.GetDirectories(System.IO.Path.GetTempPath(), "MuseUpdate*"))
+                        {
+                            if (string.Equals(d, tmp, StringComparison.OrdinalIgnoreCase)) continue;
+                            try { System.IO.Directory.Delete(d, true); } catch { }
+                        }
+                    }
+                    catch { }
                     System.IO.Directory.CreateDirectory(tmp);
                     string zip = System.IO.Path.Combine(tmp, "source.zip");
                     UpdateCheck.DownloadFile(App.UpdateSourceZip, zip);

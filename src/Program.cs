@@ -15,11 +15,13 @@ namespace Muse
             // 订阅服务器只认 TLS 1.2+，老 .NET 默认只用 TLS 1.0，握手会报“未能创建 SSL/TLS 安全通道”
             try { System.Net.ServicePointManager.SecurityProtocol = System.Net.SecurityProtocolType.Tls12 | System.Net.SecurityProtocolType.Tls11 | System.Net.SecurityProtocolType.Tls; }
             catch { try { System.Net.ServicePointManager.SecurityProtocol = (System.Net.SecurityProtocolType)0xC00; } catch { } }
-            // 上次自动更新重启后，顺手清掉临时目录和更新器残留
+            // 上次自动更新重启后，顺手清掉临时目录和更新器残留（各版本独立目录，全清，单个清不掉就跳过）
             try
             {
-                string upd = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "MuseUpdate");
-                if (System.IO.Directory.Exists(upd)) System.IO.Directory.Delete(upd, true);
+                foreach (string d in System.IO.Directory.GetDirectories(System.IO.Path.GetTempPath(), "MuseUpdate*"))
+                {
+                    try { System.IO.Directory.Delete(d, true); } catch { }
+                }
             }
             catch { }
             try
