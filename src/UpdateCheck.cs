@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Net.Http;
 using System.IO;
 using System.IO.Compression;
 using System.Net;
@@ -33,14 +35,63 @@ namespace Muse
             return false;
         }
 
+        // 更新信息先走代理再直连：直连 GitHub 在国内经常慢到超时，核心跑着就走 127.0.0.1:17890
+        static string[] ProxyCandidates()
+        {
+            var list = new List<string>();
+            if (App.CoreInUse) list.Add("http://127.0.0.1:" + App.CorePort);
+            string sys = ProxyCore.AutoProxyUrl();
+            if (sys.Length > 0 && !list.Contains(sys)) list.Add(sys);
+            list.Add("");
+            return list.ToArray();
+        }
+
         public static JObject FetchVersion()
         {
-            using (var wc = new WebClient())
+            Exception lastErr = null;
+            foreach (string proxy in ProxyCandidates())
             {
-                wc.Headers.Add("User-Agent", "Muse-Updater");
-                string json = wc.DownloadString(App.UpdateUrl);
-                return JObject.Parse(json);
+                try
+                {
+                    var h = new HttpClientHandler();
+                    if (proxy.Length == 0) h.UseProxy = false;
+                    else { h.UseProxy = true; h.Proxy = new WebProxy(proxy); }
+                    using (var c = new HttpClient(h))
+                    {
+                        c.Timeout = TimeSpan.FromSeconds(15);
+                        c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "Muse-Updater");
+                        string json = c.GetStringAsync(App.UpdateUrl).GetAwaiter().GetResult();
+                        return JObject.Parse(json);
+                    }
+                }
+                catch (Exception ex) { lastErr = ex; }
             }
+            throw lastErr ?? new Exception("取不到更新信息");
+        }
+
+        // 下更新包：同样先走代理再直连，60 秒超时
+        public static void DownloadFile(string url, string path)
+        {
+            Exception lastErr = null;
+            foreach (string proxy in ProxyCandidates())
+            {
+                try
+                {
+                    var h = new HttpClientHandler();
+                    if (proxy.Length == 0) h.UseProxy = false;
+                    else { h.UseProxy = true; h.Proxy = new WebProxy(proxy); }
+                    using (var c = new HttpClient(h))
+                    {
+                        c.Timeout = TimeSpan.FromSeconds(60);
+                        c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "Muse-Updater");
+                        byte[] data = c.GetByteArrayAsync(url).GetAwaiter().GetResult();
+                        File.WriteAllBytes(path, data);
+                        return;
+                    }
+                }
+                catch (Exception ex) { lastErr = ex; }
+            }
+            throw lastErr ?? new Exception("下载失败");
         }
 
 

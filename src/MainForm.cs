@@ -30,6 +30,8 @@ namespace Muse
         readonly Dictionary<WebView2, LoadState> _loadStates = new Dictionary<WebView2, LoadState>();
 
         FlowLayoutPanel _bar;
+        Panel _topPanel;
+        Label _nodeLabel;
         Panel _host;
         StatusStrip _status;
         ToolStripStatusLabel _statusLabel, _lineLabel, _speedLabel, _clockLabel, _dlLabel;
@@ -90,10 +92,23 @@ namespace Muse
             StartPosition = FormStartPosition.CenterScreen;
 
             _bar = new FlowLayoutPanel();
-            _bar.Dock = DockStyle.Top;
             _bar.AutoSize = true;
             _bar.Padding = new Padding(6);
-            Controls.Add(_bar);
+            _topPanel = new Panel();
+            _topPanel.Dock = DockStyle.Top;
+            _topPanel.Height = 36;
+            _bar.Dock = DockStyle.Fill;
+            _bar.AutoSize = false;
+            _topPanel.Controls.Add(_bar);
+            _nodeLabel = new Label();
+            _nodeLabel.Dock = DockStyle.Right;
+            _nodeLabel.Width = 480;
+            _nodeLabel.AutoSize = false;
+            _nodeLabel.TextAlign = ContentAlignment.MiddleRight;
+            _nodeLabel.Font = new Font("微软雅黑", 9f);
+            _nodeLabel.Text = "—";
+            _topPanel.Controls.Add(_nodeLabel);
+            Controls.Add(_topPanel);
 
             _host = new Panel();
             _host.Dock = DockStyle.Fill;
@@ -157,7 +172,7 @@ namespace Muse
 
             _clockTimer = new System.Windows.Forms.Timer();
             _clockTimer.Interval = 1000;
-            _clockTimer.Tick += delegate { _clockLabel.Text = DateTime.Now.ToString("HH:mm:ss"); };
+            _clockTimer.Tick += delegate { _clockLabel.Text = DateTime.Now.ToString("HH:mm:ss"); UpdateNodeLabel(); };
             _clockTimer.Start();
             _clockLabel.Text = DateTime.Now.ToString("HH:mm:ss");
 
@@ -232,6 +247,17 @@ namespace Muse
             if (IsDisposed) return;
             if (InvokeRequired) { BeginInvoke(new Action(delegate { SetLine(text); })); return; }
             _lineLabel.Text = text;
+        }
+
+        // 右上角：当前节点 + 速率 + 时间（和底栏同一份数据）
+        void UpdateNodeLabel()
+        {
+            if (IsDisposed || _nodeLabel == null) return;
+            if (InvokeRequired) { BeginInvoke(new Action(delegate { UpdateNodeLabel(); })); return; }
+            string node = _lineLabel.Text;
+            string speed = _speedLabel.Text;
+            string clock = _clockLabel.Text;
+            _nodeLabel.Text = node + "  " + speed + "  " + clock;
         }
 
         // ---------- 账号 ----------
@@ -509,48 +535,53 @@ namespace Muse
         }
 
         // 自动更新：每天首次启动时静默查一次；点“检查更新”按钮随时手动查
+        bool _updateCheckRunning = false;
+
         void CheckUpdate(bool manual)
         {
+            if (_updateCheckRunning) return;
             try
             {
                 string today = DateTime.Now.ToString("yyyy-MM-dd");
                 if (!manual && App.GetStr(_settings, "update_last_check", "") == today) return;
                 App.Set(_settings, "update_last_check", today);
                 App.SaveSettings(_settings);
-                System.Threading.Tasks.Task.Run(delegate ()
-                {
-                    try
-                    {
-                        JObject v = UpdateCheck.FetchVersion();
-                        string ver = (string)v["version"] ?? "";
-                        string notes = (string)v["notes"] ?? "";
-                        if (ver.Length == 0) { if (manual) ShowUpdateMsg("没有取到更新信息。"); return; }
-                        if (UpdateCheck.IsNewer(ver, App.Version))
-                        {
-                            BeginInvoke(new Action(delegate
-                            {
-                                if (MessageBox.Show(this, "发现新版本 " + ver + "（当前 " + App.Version + "）。\r\n" + notes
-                                    + "\r\n\r\n现在下载并更新吗？更新时会重新编译，约一两分钟，编好后自动重启。",
-                                    "发现新版本", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
-                                    DownloadAndInstallUpdate(ver);
-                            }));
-                        }
-                        else if (manual)
-                        {
-                            BeginInvoke(new Action(delegate
-                            {
-                                MessageBox.Show(this, "已经是最新版本（" + App.Version + "）。", "检查更新",
-                                    MessageBoxButtons.OK, MessageBoxIcon.Information);
-                            }));
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        if (manual) ShowUpdateMsg("检查更新失败：" + ex.Message);
-                    }
-                });
             }
             catch { }
+            _updateCheckRunning = true;
+            System.Threading.Tasks.Task.Run(delegate ()
+            {
+                try
+                {
+                    JObject v = UpdateCheck.FetchVersion();
+                    string ver = (string)v["version"] ?? "";
+                    string notes = (string)v["notes"] ?? "";
+                    if (ver.Length == 0) { if (manual) ShowUpdateMsg("没有取到更新信息。"); return; }
+                    if (UpdateCheck.IsNewer(ver, App.Version))
+                    {
+                        BeginInvoke(new Action(delegate
+                        {
+                            if (MessageBox.Show(this, "发现新版本 " + ver + "（当前 " + App.Version + "）。\r\n" + notes
+                                + "\r\n\r\n现在下载并更新吗？更新时会重新编译，约一两分钟，编好后自动重启。",
+                                "发现新版本", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
+                                DownloadAndInstallUpdate(ver);
+                        }));
+                    }
+                    else if (manual)
+                    {
+                        BeginInvoke(new Action(delegate
+                        {
+                            MessageBox.Show(this, "已经是最新版本（" + App.Version + "）。", "检查更新",
+                                MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        }));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (manual) ShowUpdateMsg("检查更新失败：" + ex.Message);
+                }
+                finally { _updateCheckRunning = false; }
+            });
         }
 
         void ShowUpdateMsg(string msg)
@@ -570,11 +601,7 @@ namespace Muse
                     if (System.IO.Directory.Exists(tmp)) System.IO.Directory.Delete(tmp, true);
                     System.IO.Directory.CreateDirectory(tmp);
                     string zip = System.IO.Path.Combine(tmp, "source.zip");
-                    using (var wc = new System.Net.WebClient())
-                    {
-                        wc.Headers.Add("User-Agent", "Muse-Updater");
-                        wc.DownloadFile(App.UpdateSourceZip, zip);
-                    }
+                    UpdateCheck.DownloadFile(App.UpdateSourceZip, zip);
                     UpdateCheck.ExtractZip(zip, tmp);
                     string buildDir = null;
                     foreach (string d in System.IO.Directory.GetDirectories(tmp))
