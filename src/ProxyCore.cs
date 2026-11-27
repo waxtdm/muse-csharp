@@ -509,8 +509,29 @@ namespace Muse
             return list;
         }
 
+        // 上次订阅校验超时的配置留存路径（超时时才有值，供界面问用户要不要跳过校验直接启用）
+        public static string LastTimeoutConfig = null;
+
+        // 把超时留存的配置正式启用：先备份旧配置，再搬过去
+        public static bool InstallKeptConfig()
+        {
+            try
+            {
+                string src = LastTimeoutConfig;
+                if (string.IsNullOrEmpty(src) || !File.Exists(src)) return false;
+                string dest = Path.Combine(App.CoreDir(), "config.yaml");
+                if (File.Exists(dest)) File.Copy(dest, dest + ".bak", true);
+                if (File.Exists(dest)) File.Delete(dest);
+                File.Move(src, dest);
+                LastTimeoutConfig = null;
+                return true;
+            }
+            catch { return false; }
+        }
+
         static Tuple<bool, string> DownloadSubscriptionsImpl(List<string> urls)
         {
+            LastTimeoutConfig = null;
             var cfgs = new List<Dictionary<object, object>>();
             var errors = new List<string>();
             foreach (string u in urls)
@@ -615,11 +636,23 @@ namespace Muse
                         p.ErrorDataReceived += delegate (object s, DataReceivedEventArgs e) { if (e.Data != null) errSb.AppendLine(e.Data); };
                         p.BeginOutputReadLine();
                         p.BeginErrorReadLine();
-                        if (!p.WaitForExit(25000))
+                        if (!p.WaitForExit(60000))
                         {
                             try { p.Kill(); } catch { }
-                            try { File.Delete(tmp); } catch { }
-                            return Tuple.Create(false, "新配置校验超时（25 秒没出结果），已保留旧配置");
+                            try { p.WaitForExit(3000); } catch { }
+                            // 超时也要留证据：当时吐到一半的输出 + 失败的配置都存下来，不然下次还是两眼一抹黑
+                            string partial = errSb.ToString().Trim();
+                            if (partial.Length == 0) partial = outSb.ToString().Trim();
+                            try { File.WriteAllText(Path.Combine(App.CoreDir(), "订阅校验.log"), "mihomo -t 校验超时（60 秒没出结果，已杀掉进程）\r\n\r\n当时已输出的内容：\r\n" + partial, new UTF8Encoding(false)); } catch { }
+                            string bad = Path.Combine(App.CoreDir(), "config.yaml.校验失败.yaml");
+                            try { if (File.Exists(bad)) File.Delete(bad); File.Move(tmp, bad); } catch { try { File.Delete(tmp); } catch { } }
+                            LastTimeoutConfig = File.Exists(bad) ? bad : null;
+                            string tail = partial;
+                            if (tail.Length > 400) tail = tail.Substring(tail.Length - 400);
+                            string m = "新配置校验超时（60 秒没出结果），已保留旧配置。";
+                            if (tail.Length > 0) m += "当时核心已输出：" + tail;
+                            m += "\r\n完整输出见 代理核心/订阅校验.log，失败的配置已存为 config.yaml.校验失败.yaml";
+                            return Tuple.Create(false, m);
                         }
                         p.WaitForExit();
                         if (p.ExitCode != 0)

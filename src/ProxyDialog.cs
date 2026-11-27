@@ -255,6 +255,25 @@ namespace Muse
                     Tuple<bool, string> r = ProxyCore.DownloadSubscriptions(urls);
                     bool ok = r.Item1;
                     string msg = r.Item2;
+                    // 校验超时不等于配置错：可能是核心在等网络或配置太大，给用户一个“跳过校验直接启用”的选择
+                    if (!ok && ProxyCore.LastTimeoutConfig != null)
+                    {
+                        bool skip = false;
+                        try
+                        {
+                            skip = (bool)Invoke(new Func<bool>(delegate
+                            {
+                                return MessageBox.Show(this, "新配置校验超时（60 秒没出结果），可能是核心在等网络，或配置太大。\r\n\r\n要跳过校验直接启用新配置吗？核心启动时会自己再验一次，配置真有问题核心起不来，旧配置已备份为 config.yaml.bak。\r\n（详情见 代理核心/订阅校验.log）",
+                                    "校验超时", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
+                            }));
+                        }
+                        catch { }
+                        if (skip && ProxyCore.InstallKeptConfig())
+                        {
+                            ok = true;
+                            msg = "已跳过校验启用新配置，核心正在启动验证。";
+                        }
+                    }
                     App.Set(_settings, "core_enabled", coreOn);
                     App.Set(_settings, "auto_failover", failOn);
                     App.Set(_settings, "use_local_proxy", localOn);
