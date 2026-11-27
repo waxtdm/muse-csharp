@@ -606,12 +606,33 @@ namespace Muse
                     psi.UseShellExecute = false;
                     psi.RedirectStandardOutput = true;
                     psi.RedirectStandardError = true;
+                    // 校验输出要收下来：以前直接丢掉，用户只能看到“没通过”，不知道为什么没通过
+                    var outSb = new StringBuilder();
+                    var errSb = new StringBuilder();
                     using (Process p = Process.Start(psi))
                     {
-                        if (!p.WaitForExit(25000) || p.ExitCode != 0)
+                        p.OutputDataReceived += delegate (object s, DataReceivedEventArgs e) { if (e.Data != null) outSb.AppendLine(e.Data); };
+                        p.ErrorDataReceived += delegate (object s, DataReceivedEventArgs e) { if (e.Data != null) errSb.AppendLine(e.Data); };
+                        p.BeginOutputReadLine();
+                        p.BeginErrorReadLine();
+                        if (!p.WaitForExit(25000))
                         {
+                            try { p.Kill(); } catch { }
                             try { File.Delete(tmp); } catch { }
-                            return Tuple.Create(false, "新配置没通过核心校验，已保留旧配置");
+                            return Tuple.Create(false, "新配置校验超时（25 秒没出结果），已保留旧配置");
+                        }
+                        p.WaitForExit();
+                        if (p.ExitCode != 0)
+                        {
+                            string detail = errSb.ToString().Trim();
+                            if (detail.Length == 0) detail = outSb.ToString().Trim();
+                            // 详情写日志，失败的配置留一份，方便对照查
+                            try { File.WriteAllText(Path.Combine(App.CoreDir(), "订阅校验.log"), "mihomo -t 退出码 " + p.ExitCode + "\r\n\r\n" + detail, new UTF8Encoding(false)); } catch { }
+                            string bad = Path.Combine(App.CoreDir(), "config.yaml.校验失败.yaml");
+                            try { if (File.Exists(bad)) File.Delete(bad); File.Move(tmp, bad); } catch { try { File.Delete(tmp); } catch { } }
+                            string shortErr = detail;
+                            if (shortErr.Length > 400) shortErr = shortErr.Substring(shortErr.Length - 400);
+                            return Tuple.Create(false, "新配置没通过核心校验，已保留旧配置。原因：" + shortErr + "\r\n完整输出见 代理核心/订阅校验.log，失败的配置已存为 config.yaml.校验失败.yaml");
                         }
                     }
                 }
