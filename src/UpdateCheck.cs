@@ -12,8 +12,8 @@ using Newtonsoft.Json.Linq;
 namespace Muse
 {
     // 自动更新：从 GitHub 拉 version.json 比对版本，有新版就拉源码包、本地重新编译、替换后重启。
-    // 走源码更新是因为 mihomo.exe / geoip.metadb 是二进制，不能进 GitHub 的文本推送；
-    // 本机已有这两个文件（res/ 或 Muse数据/代理核心/），编译时直接复用，不用重新下载。
+    // 走源码更新是因为 mihomo.exe / geoip.metadb / geosite.dat / geoip.dat 是二进制，不能进 GitHub 的文本推送；
+    // 本机已有这些文件（res/ 或 Muse数据/代理核心/），编译时直接复用，不用重新下载。
     static class UpdateCheck
     {
         public static bool IsNewer(string remote, string local)

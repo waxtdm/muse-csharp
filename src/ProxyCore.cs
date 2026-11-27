@@ -215,6 +215,37 @@ namespace Muse
             catch { return false; }
         }
 
+        // 地理数据：GEOSITE 规则要 geosite.dat，geodata-mode 开时 GEOIP 要 geoip.dat。
+        // 以前只带了 geoip.metadb，订阅里一旦有 GEOSITE 规则，核心启动/校验时就得去 GitHub 现下载，
+        // 国内网络慢就卡住——订阅本身没问题，是工具少带了文件。
+        public static bool EnsureGeodata()
+        {
+            bool ok = true;
+            ok = EnsureOneGeodata("geosite.dat", App.GeositeSize) && ok;
+            ok = EnsureOneGeodata("geoip.dat", App.GeoipDatSize) && ok;
+            return ok;
+        }
+
+        static bool EnsureOneGeodata(string name, long size)
+        {
+            try
+            {
+                string target = Path.Combine(App.CoreDir(), name);
+                if (File.Exists(target) && new FileInfo(target).Length == size) return true;
+                using (System.IO.Stream rs = typeof(App).Assembly.GetManifestResourceStream("Muse." + name))
+                {
+                    if (rs == null) return false;
+                    Directory.CreateDirectory(App.CoreDir());
+                    using (FileStream f = new FileStream(target, FileMode.Create, FileAccess.Write))
+                    {
+                        rs.CopyTo(f);
+                    }
+                    return new FileInfo(target).Length == size;
+                }
+            }
+            catch { return false; }
+        }
+
         // ---- 核心 HTTP API（http://127.0.0.1:19090，Bearer 鉴权）----
         public static JToken CoreApi(string path, string method = "GET", JToken payload = null)
         {
@@ -390,6 +421,7 @@ namespace Muse
             if (!File.Exists(cfg)) { App.CoreState = "还没有订阅配置"; return false; }
             FixConfigPorts();
             EnsureMmdb();
+            EnsureGeodata();
             if (SpawnOnce(waitS)) return true;
             bool exited = _coreProc != null && _coreProc.HasExited;
             if (!exited && _coreProc != null)
@@ -413,6 +445,7 @@ namespace Muse
                 catch { }
             }
             EnsureMmdb();
+            EnsureGeodata();
             _coreProc = null;
             return SpawnOnce(waitS);
         }
@@ -618,6 +651,7 @@ namespace Muse
             {
                 string exe = EnsureCore();
                 EnsureMmdb();
+                EnsureGeodata();
                 if (exe != null)
                 {
                     var psi = new ProcessStartInfo(exe,

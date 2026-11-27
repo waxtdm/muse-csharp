@@ -30,7 +30,8 @@ if exist res\muse.ico set WIN32ICON=/win32icon:res\muse.ico
   /reference:lib\Microsoft.Web.WebView2.Core.dll ^
   /reference:lib\Microsoft.Web.WebView2.WinForms.dll ^
   /reference:lib\YamlDotNet.dll /reference:lib\Newtonsoft.Json.dll ^
-  /resource:res\mihomo.exe,Muse.mihomo.exe /resource:res\geoip.metadb,Muse.geoip.metadb %WIN32ICON% ^
+  /resource:res\mihomo.exe,Muse.mihomo.exe /resource:res\geoip.metadb,Muse.geoip.metadb ^
+  /resource:res\geosite.dat,Muse.geosite.dat /resource:res\geoip.dat,Muse.geoip.dat %WIN32ICON% ^
   src\*.cs > build.log 2>&1
 type build.log
 if errorlevel 1 (
@@ -40,6 +41,6 @@ if errorlevel 1 (
 )
 copy /y lib\*.dll bin\ >nul
 echo [OK] Built: bin\Muse.exe
-echo First run extracts the built-in proxy core (mihomo.exe + geoip.metadb)
+echo First run extracts the built-in proxy core (mihomo.exe + geoip.metadb + geosite.dat + geoip.dat)
 echo to the MuseData folder automatically. See README.
 pause

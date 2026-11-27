@@ -12,13 +12,15 @@ namespace Muse
     static class App
     {
         public const string ShellVersion = "2026-11-25-1255";
-        public const string Version = "1.0.14";   // C# 版自己的版本号，自动更新靠它比对
+        public const string Version = "1.0.15";   // C# 版自己的版本号，自动更新靠它比对
         public const string UpdateUrl = "https://raw.githubusercontent.com/waxtdm/muse-csharp/main/version.json";
         public const string UpdateSourceZip = "https://codeload.github.com/waxtdm/muse-csharp/zip/refs/heads/main";
         public const int CorePort = 17890;      // mihomo mixed-port
         public const int CtrlPort = 19090;      // mihomo external-controller
         public const long CoreExeSize = 61192704;
         public const long MmdbSize = 8434612;
+        public const long GeositeSize = 4357245;
+        public const long GeoipDatSize = 16676025;
         public const int LockPort = 17999;      // 单例锁端口
         public const long CacheLimit = 1536L * 1024 * 1024; // 1.5GB
 

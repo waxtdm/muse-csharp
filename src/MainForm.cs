@@ -640,7 +640,7 @@ namespace Muse
                         if (System.IO.File.Exists(System.IO.Path.Combine(d, "build.bat"))) { buildDir = d; break; }
                     }
                     if (buildDir == null) throw new Exception("更新包里没有找到 build.bat");
-                    // 编译要内嵌 mihomo.exe / geoip.metadb：先从本机安装目录补一份
+                    // 编译要内嵌 mihomo.exe / geoip.metadb / geosite.dat / geoip.dat：先从本机安装目录补一份
                     string resDst = System.IO.Path.Combine(buildDir, "res");
                     string resSrc = System.IO.Path.Combine(UpdateCheck.AppRoot(), "res");
                     if (System.IO.Directory.Exists(resSrc)) UpdateCheck.CopyDir(resSrc, resDst);
@@ -652,6 +652,10 @@ namespace Muse
                             System.IO.File.Copy(System.IO.Path.Combine(core, "mihomo.exe"), System.IO.Path.Combine(resDst, "mihomo.exe"), true);
                         if (System.IO.File.Exists(System.IO.Path.Combine(core, "geoip.metadb")))
                             System.IO.File.Copy(System.IO.Path.Combine(core, "geoip.metadb"), System.IO.Path.Combine(resDst, "geoip.metadb"), true);
+                        if (System.IO.File.Exists(System.IO.Path.Combine(core, "geosite.dat")))
+                            System.IO.File.Copy(System.IO.Path.Combine(core, "geosite.dat"), System.IO.Path.Combine(resDst, "geosite.dat"), true);
+                        if (System.IO.File.Exists(System.IO.Path.Combine(core, "geoip.dat")))
+                            System.IO.File.Copy(System.IO.Path.Combine(core, "geoip.dat"), System.IO.Path.Combine(resDst, "geoip.dat"), true);
                     }
                     if (!System.IO.File.Exists(System.IO.Path.Combine(resDst, "mihomo.exe")))
                         throw new Exception("本机找不到 mihomo.exe（res/ 和 Muse数据/代理核心/ 里都没有），没法编译，先从完整安装包里拷一份 res 文件夹再更新");
