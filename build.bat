@@ -20,6 +20,9 @@ if not defined CSC (
 )
 echo Using compiler: %CSC%
 if not exist bin mkdir bin
+if not exist res\muse.ico if exist res\muse.ico.b64 certutil -decode res\muse.ico.b64 res\muse.ico >nul 2>&1
+set WIN32ICON=
+if exist res\muse.ico set WIN32ICON=/win32icon:res\muse.ico
 %CSC% /nologo /target:winexe /out:bin\Muse.exe /optimize /langversion:5 ^
   /reference:System.dll /reference:System.Core.dll /reference:System.Data.dll ^
   /reference:System.Drawing.dll /reference:System.Windows.Forms.dll ^
@@ -27,7 +30,7 @@ if not exist bin mkdir bin
   /reference:lib\Microsoft.Web.WebView2.Core.dll ^
   /reference:lib\Microsoft.Web.WebView2.WinForms.dll ^
   /reference:lib\YamlDotNet.dll /reference:lib\Newtonsoft.Json.dll ^
-  /resource:res\mihomo.exe,Muse.mihomo.exe /resource:res\geoip.metadb,Muse.geoip.metadb ^
+  /resource:res\mihomo.exe,Muse.mihomo.exe /resource:res\geoip.metadb,Muse.geoip.metadb %WIN32ICON% ^
   src\*.cs > build.log 2>&1
 type build.log
 if errorlevel 1 (
