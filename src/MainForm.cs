@@ -88,12 +88,13 @@ namespace Muse
             _browserArgs = browserArgs;
             _launchedGuess = launchedGuess;
             Text = "Muse";
-            // 左上角图标：Muse 小幽灵（内嵌资源 res/muse.ico）
+            // 左上角图标：登录页那个胖乎乎的小人（base64 内嵌在 AppIcon.cs，免文件，自动更新也能带上）
             try
             {
-                using (Stream rs = typeof(App).Assembly.GetManifestResourceStream("Muse.muse.ico"))
+                byte[] iconData = Convert.FromBase64String(AppIcon.IcoBase64);
+                using (MemoryStream ms = new MemoryStream(iconData))
                 {
-                    if (rs != null) Icon = new Icon(rs);
+                    Icon = new Icon(ms);
                 }
             }
             catch { }
