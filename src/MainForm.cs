@@ -887,16 +887,22 @@ namespace Muse
                         RestartApp();
                 }
             };
+            // 新窗口（比如设置里的“Meta 账户”）直接在当前主视图里打开，不再建弹窗：
+            // v18 的做法是建 PopupForm 再把它的 View 交给 e.NewWindow，但那时 View 还没初始化完，
+            // 交过去的是空的，请求就漏到系统浏览器去了（于是多出一个一样的 Edge 窗口），
+            // 同时弹窗自己的跳转又把同一地址推给主窗口，主窗口里也打开一份，两个窗口叠在一起。
             core.NewWindowRequested += delegate (object s, CoreWebView2NewWindowRequestedEventArgs e)
             {
                 try
                 {
-                    var popup = new PopupForm(this, _envs[ls.Account], e.Uri);
-                    popup.Show(this);
-                    e.NewWindow = popup.View.CoreWebView2;
+                    if (!string.IsNullOrEmpty(e.Uri))
+                    {
+                        Uri u = new Uri(e.Uri);
+                        if (u.Scheme == "http" || u.Scheme == "https") NavigateCurrent(e.Uri);
+                    }
                     e.Handled = true;
                 }
-                catch { e.Handled = false; }
+                catch { e.Handled = true; }
             };
             core.DownloadStarting += delegate (object s, CoreWebView2DownloadStartingEventArgs e)
             {
