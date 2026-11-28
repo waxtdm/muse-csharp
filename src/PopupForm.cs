@@ -20,8 +20,13 @@ namespace Muse
         {
             _main = main;
             Text = "Muse";
-            Size = new Size(900, 650);
-            StartPosition = FormStartPosition.CenterParent;
+            // 弹窗放大到 1200x800（Meta 账户页 900 宽会把左边侧栏挤出去）；居中改按屏幕居中，
+            // 不按主窗口居中，免得主窗口靠边时弹窗被顶出屏幕外；再按工作区 90% 封顶，小屏也不会溢出
+            Rectangle wa = Screen.PrimaryScreen.WorkingArea;
+            int w = Math.Min(1200, (int)(wa.Width * 0.9));
+            int h = Math.Min(800, (int)(wa.Height * 0.9));
+            Size = new Size(w, h);
+            StartPosition = FormStartPosition.CenterScreen;
             View = new WebView2();
             View.Dock = DockStyle.Fill;
             Controls.Add(View);
