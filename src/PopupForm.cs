@@ -7,13 +7,13 @@ using Microsoft.Web.WebView2.WinForms;
 
 namespace Muse
 {
-    // 新窗口弹窗（对应 py View.createWindow）：与主账号共用同一环境，
-    // 跳到 http(s) 就交给主窗口加载后关掉；9 秒还打不开就甩给本地浏览器。
+    // 新窗口弹窗：与主账号共用同一环境（登录态带过去，不用重新登录），自带标题栏关闭 X；
+    // 只显示页面，不推给主窗口、不甩给系统浏览器。主窗口的 NewWindowRequested 用
+    // GetDeferral 等视图初始化完再把视图交过去，v18 就是没等初始化完才漏到系统浏览器。
     public class PopupForm : Form
     {
         public WebView2 View { get; private set; }
         readonly MainForm _main;
-        bool _landed = false;
         bool _closed = false;
 
         public PopupForm(MainForm main, CoreWebView2Environment env, string startUri)
@@ -36,22 +36,30 @@ namespace Muse
             }
             catch { Close(); return; }
             CoreWebView2 core = View.CoreWebView2;
-            core.NavigationStarting += delegate (object s, CoreWebView2NavigationStartingEventArgs e)
+            // 标题跟页面走，比如“Account settings | Meta”，一看就知道是哪个窗口
+            core.DocumentTitleChanged += delegate (object s, object e)
             {
+                try { if (!string.IsNullOrEmpty(core.DocumentTitle)) Text = core.DocumentTitle; } catch { }
+            };
+            // 页面自己要关窗口（比如点网站里的关闭）就关掉本窗口
+            core.WindowCloseRequested += delegate (object s, object e) { SafeClose(); };
+            // 弹窗里再开新窗口：同样开一个独立小窗口，不推给主窗口、不甩给系统浏览器
+            core.NewWindowRequested += async delegate (object s2, CoreWebView2NewWindowRequestedEventArgs e2)
+            {
+                CoreWebView2Deferral def2 = null;
                 try
                 {
-                    Uri u = new Uri(e.Uri);
-                    if ((u.Scheme == "http" || u.Scheme == "https"))
-                    {
-                        _main.NavigateCurrent(e.Uri);
-                        App.OneShot(500, delegate { SafeClose(); });
-                    }
+                    Uri u2 = string.IsNullOrEmpty(e2.Uri) ? null : new Uri(e2.Uri);
+                    if (u2 == null || (u2.Scheme != "http" && u2.Scheme != "https")) { e2.Handled = true; return; }
+                    def2 = e2.GetDeferral();
+                    var popup2 = new PopupForm(_main, env, null);
+                    await popup2.View.EnsureCoreWebView2Async(env);
+                    e2.NewWindow = popup2.View.CoreWebView2;
+                    e2.Handled = true;
+                    popup2.Show();
                 }
-                catch { }
-            };
-            core.NavigationCompleted += delegate (object s, CoreWebView2NavigationCompletedEventArgs e)
-            {
-                _landed = e.IsSuccess;
+                catch { e2.Handled = false; }
+                finally { if (def2 != null) def2.Complete(); }
             };
             core.DownloadStarting += delegate (object s, CoreWebView2DownloadStartingEventArgs e)
             {
@@ -67,36 +75,8 @@ namespace Muse
                 }
                 catch { }
             };
-            var early = new Timer();
-            early.Interval = 4000;
-            early.Tick += delegate
-            {
-                early.Stop();
-                try
-                {
-                    string sc = View.Source == null ? "" : View.Source.Scheme;
-                    if (sc == "" || sc == "about") SafeClose();
-                }
-                catch { }
-            };
-            early.Start();
-            var fb = new Timer();
-            fb.Interval = 9000;
-            fb.Tick += delegate
-            {
-                fb.Stop();
-                try
-                {
-                    Uri u = View.Source;
-                    if (!_landed && u != null && (u.Scheme == "http" || u.Scheme == "https"))
-                    {
-                        try { Process.Start(new ProcessStartInfo(u.ToString()) { UseShellExecute = true }); } catch { }
-                        SafeClose();
-                    }
-                }
-                catch { }
-            };
-            fb.Start();
+            // startUri 只在独立创建弹窗时用；NewWindowRequested 走 deferral 时传 null，
+            // 页面地址由浏览器自己填进已初始化好的视图，不在这里再导一次
             if (!string.IsNullOrEmpty(startUri))
             {
                 try { core.Navigate(startUri); } catch { }

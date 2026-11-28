@@ -903,21 +903,26 @@ namespace Muse
                         RestartApp();
                 }
             };
-            // 新窗口（比如设置里的“Meta 账户”）在当前主视图里打开：v20 试过用 Edge 独立窗口，
-            // 但 Edge 里没有程序里那个账号的登录态、要重新登录，用户嫌麻烦，改回主窗口；
-            // 主窗口顶栏新加了“✕ 关闭”按钮，点一下就回到上一个页面，等于把当前页关了。
-            core.NewWindowRequested += delegate (object s, CoreWebView2NewWindowRequestedEventArgs e)
+            // 新窗口（比如设置里的“Meta 账户”）在程序内开独立小窗口：与当前账号共用同一环境，
+            // 登录态带过去不用重新登录；小窗口自带标题栏关闭 X，主窗口留在 muse 对话框不动。
+            // 必须用 GetDeferral 等视图初始化完再交给 e.NewWindow：v18 没等初始化完就交，
+            // 交过去是空的，请求漏到系统浏览器、主窗口也多打开一份。
+            core.NewWindowRequested += async delegate (object s, CoreWebView2NewWindowRequestedEventArgs e)
             {
+                CoreWebView2Deferral def = null;
                 try
                 {
-                    if (!string.IsNullOrEmpty(e.Uri))
-                    {
-                        Uri u = new Uri(e.Uri);
-                        if (u.Scheme == "http" || u.Scheme == "https") NavigateCurrent(e.Uri);
-                    }
+                    Uri u = string.IsNullOrEmpty(e.Uri) ? null : new Uri(e.Uri);
+                    if (u == null || (u.Scheme != "http" && u.Scheme != "https")) { e.Handled = true; return; }
+                    def = e.GetDeferral();
+                    var popup = new PopupForm(this, _envs[ls.Account], null);
+                    await popup.View.EnsureCoreWebView2Async(_envs[ls.Account]);
+                    e.NewWindow = popup.View.CoreWebView2;
                     e.Handled = true;
+                    popup.Show(this);
                 }
-                catch { e.Handled = true; }
+                catch { e.Handled = false; }
+                finally { if (def != null) def.Complete(); }
             };
             core.DownloadStarting += delegate (object s, CoreWebView2DownloadStartingEventArgs e)
             {
