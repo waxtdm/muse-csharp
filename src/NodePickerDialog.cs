@@ -45,25 +45,17 @@ namespace Muse
             scroll.Controls.Add(t);
 
             int row = 0;
-            Action<Control, int> addRow = delegate (Control c, int gap)
-            {
-                t.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-                c.Margin = new Padding(0, 0, 0, gap);
-                t.Controls.Add(c, 0, row);
-                row++;
-            };
-
             _title = new Label();
             _title.Text = "正在测速…";
             _title.AutoSize = true;
             _title.MaximumSize = new Size(532, 0);
-            addRow(_title, 6);
+            App.AddRow(t, ref row, _title, 6);
 
             _search = new TextBox();
             _search.Dock = DockStyle.Fill;
-            SetCue(_search, "输入地区或节点名过滤…");
+            App.SetCue(_search, "输入地区或节点名过滤…");
             _search.TextChanged += delegate { ApplyFilter(); };
-            addRow(_search, 6);
+            App.AddRow(t, ref row, _search, 6);
 
             _list = new ListView();
             _list.Dock = DockStyle.Fill;
@@ -92,18 +84,9 @@ namespace Muse
             cancelBtn.Click += delegate { DialogResult = DialogResult.Cancel; Close(); };
             btns.Controls.Add(okBtn);
             btns.Controls.Add(cancelBtn);
-            addRow(btns, 0);
+            App.AddRow(t, ref row, btns, 0);
 
             LoadNodesAsync();
-        }
-
-
-        [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
-        static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, string lParam);
-
-        static void SetCue(TextBox tb, string text)
-        {
-            try { SendMessage(tb.Handle, 0x1501, (IntPtr)1, text); } catch { }
         }
 
         void TryAccept()
@@ -117,7 +100,7 @@ namespace Muse
                 try
                 {
                     ProxyCore.CoreApi("/proxies/" + Uri.EscapeDataString(gname), "PUT",
-                        App.NewNameObj(choice));
+                        App.NewKVObj("name", choice));
                     BeginInvoke(new Action(delegate
                     {
                         string locked = Regions.RegionOf(choice) ?? "";

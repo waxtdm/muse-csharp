@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Windows.Forms;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -12,7 +14,7 @@ namespace Muse
     static class App
     {
         public const string ShellVersion = "2026-11-25-1255";
-        public const string Version = "1.0.15";   // C# 版自己的版本号，自动更新靠它比对
+        public const string Version = "1.0.17";   // C# 版自己的版本号，自动更新靠它比对
         public const string UpdateUrl = "https://raw.githubusercontent.com/waxtdm/muse-csharp/main/version.json";
         public const string UpdateSourceZip = "https://codeload.github.com/waxtdm/muse-csharp/zip/refs/heads/main";
         public const int CorePort = 17890;      // mihomo mixed-port
@@ -96,17 +98,10 @@ namespace Muse
         }
 
         // C#5 兼容的小对象构造（不用字典初始化器语法）
-        public static JObject NewNameObj(string name)
+        public static JObject NewKVObj(string key, string value)
         {
             JObject o = new JObject();
-            o["name"] = name;
-            return o;
-        }
-
-        public static JObject NewPathObj(string path)
-        {
-            JObject o = new JObject();
-            o["path"] = path;
+            o[key] = value;
             return o;
         }
 
@@ -201,6 +196,34 @@ namespace Muse
                     DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss ") + ex + "\r\n", Encoding.UTF8);
             }
             catch { }
+        }
+
+        // ---- 跨对话框共用的小样板（原来各对话框里各写了一份）----
+        // .NET Framework 4.8 的 TextBox 没有 PlaceholderText，用 cue banner 实现
+        [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+        static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, string lParam);
+
+        public static void SetCue(TextBox tb, string text)
+        {
+            try { SendMessage(tb.Handle, 0x1501, (IntPtr)1, text); } catch { }
+        }
+
+        // TableLayoutPanel 加一行（单列对话框的通用写法）
+        public static void AddRow(TableLayoutPanel t, ref int row, Control c, int gap)
+        {
+            t.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            c.Margin = new Padding(0, 0, 0, gap);
+            t.Controls.Add(c, 0, row);
+            row++;
+        }
+
+        // 一次性定时器：到点跑一次就停
+        public static void OneShot(int ms, Action a)
+        {
+            var t = new Timer();
+            t.Interval = ms;
+            t.Tick += delegate { t.Stop(); a(); };
+            t.Start();
         }
     }
 }

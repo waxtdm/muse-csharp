@@ -44,10 +44,7 @@ namespace Muse
                     if ((u.Scheme == "http" || u.Scheme == "https"))
                     {
                         _main.NavigateCurrent(e.Uri);
-                        var t = new Timer();
-                        t.Interval = 500;
-                        t.Tick += delegate { t.Stop(); SafeClose(); };
-                        t.Start();
+                        App.OneShot(500, delegate { SafeClose(); });
                     }
                 }
                 catch { }

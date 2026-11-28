@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Windows.Forms;
 using Newtonsoft.Json.Linq;
+using System.Net;
 
 namespace Muse
 {
@@ -13,21 +14,21 @@ namespace Muse
         static void Main()
         {
             // 订阅服务器只认 TLS 1.2+，老 .NET 默认只用 TLS 1.0，握手会报“未能创建 SSL/TLS 安全通道”
-            try { System.Net.ServicePointManager.SecurityProtocol = System.Net.SecurityProtocolType.Tls12 | System.Net.SecurityProtocolType.Tls11 | System.Net.SecurityProtocolType.Tls; }
-            catch { try { System.Net.ServicePointManager.SecurityProtocol = (System.Net.SecurityProtocolType)0xC00; } catch { } }
+            try { ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls; }
+            catch { try { ServicePointManager.SecurityProtocol = (SecurityProtocolType)0xC00; } catch { } }
             // 上次自动更新重启后，顺手清掉临时目录和更新器残留（各版本独立目录，全清，单个清不掉就跳过）
             try
             {
-                foreach (string d in System.IO.Directory.GetDirectories(System.IO.Path.GetTempPath(), "MuseUpdate*"))
+                foreach (string d in Directory.GetDirectories(Path.GetTempPath(), "MuseUpdate*"))
                 {
-                    try { System.IO.Directory.Delete(d, true); } catch { }
+                    try { Directory.Delete(d, true); } catch { }
                 }
             }
             catch { }
             try
             {
-                string ub = System.IO.Path.Combine(UpdateCheck.AppRoot(), "update.bat");
-                if (System.IO.File.Exists(ub)) System.IO.File.Delete(ub);
+                string ub = Path.Combine(UpdateCheck.AppRoot(), "update.bat");
+                if (File.Exists(ub)) File.Delete(ub);
             }
             catch { }
             Application.EnableVisualStyles();
@@ -42,7 +43,7 @@ namespace Muse
             TcpListener locker = null;
             try
             {
-                locker = new TcpListener(System.Net.IPAddress.Loopback, App.LockPort);
+                locker = new TcpListener(IPAddress.Loopback, App.LockPort);
                 locker.Start();
             }
             catch

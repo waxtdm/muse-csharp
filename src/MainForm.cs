@@ -12,6 +12,7 @@ using System.Windows.Forms;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using Newtonsoft.Json.Linq;
+using System.Text.RegularExpressions;
 
 namespace Muse
 {
@@ -31,6 +32,8 @@ namespace Muse
 
         FlowLayoutPanel _bar;
         Panel _topPanel;
+        Panel _accHost;
+        MenuStrip _menu;
         Label _nodeLabel;
         Panel _host;
         StatusStrip _status;
@@ -101,25 +104,49 @@ namespace Muse
             Size = new Size(1280, 900);
             StartPosition = FormStartPosition.CenterScreen;
 
-            _bar = new FlowLayoutPanel();
-            _bar.AutoSize = true;
-            _bar.Padding = new Padding(6);
             _topPanel = new Panel();
             _topPanel.Dock = DockStyle.Top;
-            _topPanel.Height = 36;
+            _topPanel.Height = 38;
             _topPanel.BackColor = Color.FromArgb(199, 237, 204); // 豆沙绿护眼色
-            _bar.Dock = DockStyle.Fill;
-            _bar.AutoSize = false;
+            // 账号条横向滚动容器：账号多了出横向滚动条，不再被顶出顶栏看不见
+            _accHost = new Panel();
+            _accHost.Dock = DockStyle.Fill;
+            _accHost.AutoScroll = true;
+            _accHost.BackColor = Color.FromArgb(199, 237, 204);
+            _bar = new FlowLayoutPanel();
+            _bar.AutoSize = true;
+            _bar.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            _bar.WrapContents = false;
+            _bar.Padding = new Padding(2, 2, 2, 2);
             _bar.BackColor = Color.FromArgb(199, 237, 204);
-            _topPanel.Controls.Add(_bar);
+            _bar.Location = new Point(0, 0);
+            _bar.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+            _accHost.Controls.Add(_bar);
+            // 菜单栏（记事本式）：工具 / 帐号管理 两个下拉
+            _menu = new MenuStrip();
+            _menu.Dock = DockStyle.Left;
+            _menu.GripStyle = ToolStripGripStyle.Hidden;
+            _menu.BackColor = Color.FromArgb(199, 237, 204);
+            ToolStripMenuItem toolMenu = new ToolStripMenuItem("工具");
+            toolMenu.DropDownItems.Add("代理设置", null, delegate { new ProxyDialog(this, _settings).ShowDialog(this); });
+            toolMenu.DropDownItems.Add("检查更新", null, delegate { CheckUpdate(true); });
+            ToolStripMenuItem accMenu = new ToolStripMenuItem("帐号管理");
+            accMenu.DropDownItems.Add("添加帐号", null, delegate { AddAccount(); });
+            accMenu.DropDownItems.Add("删除当前帐号", null, delegate { DeleteCurrent(); });
+            _menu.Items.Add(toolMenu);
+            _menu.Items.Add(accMenu);
             _nodeLabel = new Label();
             _nodeLabel.Dock = DockStyle.Right;
-            _nodeLabel.Width = 480;
+            _nodeLabel.Width = 300;
             _nodeLabel.AutoSize = false;
+            _nodeLabel.AutoEllipsis = true;
             _nodeLabel.TextAlign = ContentAlignment.MiddleRight;
             _nodeLabel.Font = new Font("微软雅黑", 9f);
             _nodeLabel.Text = "—";
+            // Dock 顺序：先加 Fill，再加 Right，最后加 Left
+            _topPanel.Controls.Add(_accHost);
             _topPanel.Controls.Add(_nodeLabel);
+            _topPanel.Controls.Add(_menu);
             Controls.Add(_topPanel);
 
             _host = new Panel();
@@ -192,10 +219,7 @@ namespace Muse
             _nodeTimer.Interval = 60000;
             _nodeTimer.Tick += delegate { CheckNodes(); };
             _nodeTimer.Start();
-            var t0 = new System.Windows.Forms.Timer();
-            t0.Interval = 20000;
-            t0.Tick += delegate { t0.Stop(); CheckNodes(); };
-            t0.Start();
+            App.OneShot(20000, delegate { CheckNodes(); });
 
             // 运行期间每 6 小时查一次更新（绕开“每天首次”的日期门）
             var updateTimer = new System.Windows.Forms.Timer();
@@ -207,10 +231,7 @@ namespace Muse
             _lineTimer.Interval = 5000;
             _lineTimer.Tick += delegate { PollLine(); };
             _lineTimer.Start();
-            var t1 = new System.Windows.Forms.Timer();
-            t1.Interval = 3000;
-            t1.Tick += delegate { t1.Stop(); PollLine(); };
-            t1.Start();
+            App.OneShot(3000, delegate { PollLine(); });
 
             _guardTimer = new System.Windows.Forms.Timer();
             _guardTimer.Interval = 20000;
@@ -253,29 +274,32 @@ namespace Muse
             };
         }
 
-        void ShowStatus(string text, int ms)
+        // 跨线程调 UI 的样板：已在 UI 线程直接跑，否则抛回 UI 线程；窗口已释放就静默丢掉
+        void Ui(Action a)
         {
             if (IsDisposed) return;
-            if (InvokeRequired) { BeginInvoke(new Action(delegate { ShowStatus(text, ms); })); return; }
-            _statusLabel.Text = text;
+            if (InvokeRequired) { BeginInvoke(a); return; }
+            a();
+        }
+
+        void ShowStatus(string text, int ms)
+        {
+            Ui(delegate { _statusLabel.Text = text; });
         }
 
         void SetLine(string text)
         {
-            if (IsDisposed) return;
-            if (InvokeRequired) { BeginInvoke(new Action(delegate { SetLine(text); })); return; }
-            _lineLabel.Text = text;
+            Ui(delegate { _lineLabel.Text = text; });
         }
 
         // 右上角：当前节点 + 速率 + 时间（和底栏同一份数据）
         void UpdateNodeLabel()
         {
-            if (IsDisposed || _nodeLabel == null) return;
-            if (InvokeRequired) { BeginInvoke(new Action(delegate { UpdateNodeLabel(); })); return; }
-            string node = _lineLabel.Text;
-            string speed = _speedLabel.Text;
-            string clock = _clockLabel.Text;
-            _nodeLabel.Text = node + "  " + speed + "  " + clock;
+            Ui(delegate
+            {
+                if (_nodeLabel == null) return;
+                _nodeLabel.Text = _lineLabel.Text + "  " + _speedLabel.Text + "  " + _clockLabel.Text;
+            });
         }
 
         // ---------- 账号 ----------
@@ -364,8 +388,7 @@ namespace Muse
         {
             _bar.Controls.Clear();
             _accButtons.Clear();
-            AddBarButton("代理设置", delegate { new ProxyDialog(this, _settings).ShowDialog(this); });
-            AddBarButton("检查更新", delegate { CheckUpdate(true); });
+            // 代理设置 / 检查更新 已收进左上角“工具”下拉；添加 / 删除账号已收进“帐号管理”下拉
             AddBarButton("刷新", delegate { WebView2 v = CurrentView(); if (v != null) v.Reload(); });
             AddBarButton("主页", delegate { WebView2 v = CurrentView(); if (v != null) v.Source = new Uri("https://muse.ai"); });
             foreach (string name in _accounts)
@@ -378,8 +401,6 @@ namespace Muse
                 _bar.Controls.Add(b);
                 _accButtons[n] = b;
             }
-            AddBarButton("＋ 添加账号", delegate { AddAccount(); });
-            AddBarButton("删除当前账号", delegate { DeleteCurrent(); });
             UpdateLineLabel();
         }
 
@@ -400,7 +421,7 @@ namespace Muse
             if (App.CoreInUse) shortText = "内置代理";
             else
             {
-                System.Text.RegularExpressions.Match m = System.Text.RegularExpressions.Regex.Match(desc, @"\d+\.\d+\.\d+\.\d+:\d+");
+                Match m = Regex.Match(desc, @"\d+\.\d+\.\d+\.\d+:\d+");
                 if (m.Success) shortText = m.Value;
                 else if (desc.Contains("PAC")) shortText = "PAC";
                 else if (desc.Contains("拦截") || desc.Contains("不通")) shortText = "无代理";
@@ -569,7 +590,7 @@ namespace Muse
             }
             catch { }
             _updateCheckRunning = true;
-            System.Threading.Tasks.Task.Run(delegate ()
+            Task.Run(delegate ()
             {
                 try
                 {
@@ -615,76 +636,76 @@ namespace Muse
         void DownloadAndInstallUpdate(string ver)
         {
             ShowStatus("正在下载新版本 " + ver + " 的源码包，请稍候…", 0);
-            System.Threading.Tasks.Task.Run(delegate ()
+            Task.Run(delegate ()
             {
                 // 每个版本用独立临时目录，旧目录被占住也挡不住新更新；旧目录只尽力清，清不掉就留着
-                string tmp = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "MuseUpdate-" + ver);
+                string tmp = Path.Combine(Path.GetTempPath(), "MuseUpdate-" + ver);
                 try
                 {
                     try
                     {
-                        foreach (string d in System.IO.Directory.GetDirectories(System.IO.Path.GetTempPath(), "MuseUpdate*"))
+                        foreach (string d in Directory.GetDirectories(Path.GetTempPath(), "MuseUpdate*"))
                         {
                             if (string.Equals(d, tmp, StringComparison.OrdinalIgnoreCase)) continue;
-                            try { System.IO.Directory.Delete(d, true); } catch { }
+                            try { Directory.Delete(d, true); } catch { }
                         }
                     }
                     catch { }
-                    System.IO.Directory.CreateDirectory(tmp);
-                    string zip = System.IO.Path.Combine(tmp, "source.zip");
+                    Directory.CreateDirectory(tmp);
+                    string zip = Path.Combine(tmp, "source.zip");
                     UpdateCheck.DownloadFile(App.UpdateSourceZip, zip);
                     UpdateCheck.ExtractZip(zip, tmp);
                     string buildDir = null;
-                    foreach (string d in System.IO.Directory.GetDirectories(tmp))
+                    foreach (string d in Directory.GetDirectories(tmp))
                     {
-                        if (System.IO.File.Exists(System.IO.Path.Combine(d, "build.bat"))) { buildDir = d; break; }
+                        if (File.Exists(Path.Combine(d, "build.bat"))) { buildDir = d; break; }
                     }
                     if (buildDir == null) throw new Exception("更新包里没有找到 build.bat");
                     // 编译要内嵌 mihomo.exe / geoip.metadb / geosite.dat / geoip.dat：先从本机安装目录补一份
-                    string resDst = System.IO.Path.Combine(buildDir, "res");
-                    string resSrc = System.IO.Path.Combine(UpdateCheck.AppRoot(), "res");
-                    if (System.IO.Directory.Exists(resSrc)) UpdateCheck.CopyDir(resSrc, resDst);
+                    string resDst = Path.Combine(buildDir, "res");
+                    string resSrc = Path.Combine(UpdateCheck.AppRoot(), "res");
+                    if (Directory.Exists(resSrc)) UpdateCheck.CopyDir(resSrc, resDst);
                     else
                     {
-                        System.IO.Directory.CreateDirectory(resDst);
+                        Directory.CreateDirectory(resDst);
                         string core = App.CoreDir();
-                        if (System.IO.File.Exists(System.IO.Path.Combine(core, "mihomo.exe")))
-                            System.IO.File.Copy(System.IO.Path.Combine(core, "mihomo.exe"), System.IO.Path.Combine(resDst, "mihomo.exe"), true);
-                        if (System.IO.File.Exists(System.IO.Path.Combine(core, "geoip.metadb")))
-                            System.IO.File.Copy(System.IO.Path.Combine(core, "geoip.metadb"), System.IO.Path.Combine(resDst, "geoip.metadb"), true);
-                        if (System.IO.File.Exists(System.IO.Path.Combine(core, "geosite.dat")))
-                            System.IO.File.Copy(System.IO.Path.Combine(core, "geosite.dat"), System.IO.Path.Combine(resDst, "geosite.dat"), true);
-                        if (System.IO.File.Exists(System.IO.Path.Combine(core, "geoip.dat")))
-                            System.IO.File.Copy(System.IO.Path.Combine(core, "geoip.dat"), System.IO.Path.Combine(resDst, "geoip.dat"), true);
+                        if (File.Exists(Path.Combine(core, "mihomo.exe")))
+                            File.Copy(Path.Combine(core, "mihomo.exe"), Path.Combine(resDst, "mihomo.exe"), true);
+                        if (File.Exists(Path.Combine(core, "geoip.metadb")))
+                            File.Copy(Path.Combine(core, "geoip.metadb"), Path.Combine(resDst, "geoip.metadb"), true);
+                        if (File.Exists(Path.Combine(core, "geosite.dat")))
+                            File.Copy(Path.Combine(core, "geosite.dat"), Path.Combine(resDst, "geosite.dat"), true);
+                        if (File.Exists(Path.Combine(core, "geoip.dat")))
+                            File.Copy(Path.Combine(core, "geoip.dat"), Path.Combine(resDst, "geoip.dat"), true);
                     }
-                    if (!System.IO.File.Exists(System.IO.Path.Combine(resDst, "mihomo.exe")))
+                    if (!File.Exists(Path.Combine(resDst, "mihomo.exe")))
                         throw new Exception("本机找不到 mihomo.exe（res/ 和 Muse数据/代理核心/ 里都没有），没法编译，先从完整安装包里拷一份 res 文件夹再更新");
                     // 编译还要 lib/ 里的 5 个 DLL：同样从本机安装目录补一份
-                    string libSrc = System.IO.Path.Combine(UpdateCheck.AppRoot(), "lib");
-                    string libDst = System.IO.Path.Combine(buildDir, "lib");
-                    if (System.IO.Directory.Exists(libSrc)) UpdateCheck.CopyDir(libSrc, libDst);
+                    string libSrc = Path.Combine(UpdateCheck.AppRoot(), "lib");
+                    string libDst = Path.Combine(buildDir, "lib");
+                    if (Directory.Exists(libSrc)) UpdateCheck.CopyDir(libSrc, libDst);
                     BeginInvoke(new Action(delegate { ShowStatus("源码已下好，正在编译新版本，请稍候…", 0); }));
-                    var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", "/c \"build.bat > build_stdout.log 2>&1 < nul\"");
+                    var psi = new ProcessStartInfo("cmd.exe", "/c \"build.bat > build_stdout.log 2>&1 < nul\"");
                     psi.WorkingDirectory = buildDir;
                     psi.UseShellExecute = false;
                     psi.CreateNoWindow = true;
-                    var p = System.Diagnostics.Process.Start(psi);
+                    var p = Process.Start(psi);
                     p.WaitForExit();
-                    string exe = System.IO.Path.Combine(buildDir, "bin", "Muse.exe");
-                    if (!System.IO.File.Exists(exe) || new System.IO.FileInfo(exe).Length < 10000000)
+                    string exe = Path.Combine(buildDir, "bin", "Muse.exe");
+                    if (!File.Exists(exe) || new FileInfo(exe).Length < 10000000)
                     {
                         string log = "";
-                        try { log = System.IO.File.ReadAllText(System.IO.Path.Combine(buildDir, "build.log")); } catch { }
+                        try { log = File.ReadAllText(Path.Combine(buildDir, "build.log")); } catch { }
                         if (log.Length > 600) log = log.Substring(0, 600) + "…";
                         throw new Exception("编译失败，新版本没有编出来，旧版本没动。\r\n" + log);
                     }
-                    string bat = System.IO.Path.Combine(buildDir, "update.bat");
-                    System.IO.File.WriteAllText(bat, UpdateCheck.UpdateBatText(), new System.Text.ASCIIEncoding());
+                    string bat = Path.Combine(buildDir, "update.bat");
+                    File.WriteAllText(bat, UpdateCheck.UpdateBatText(), new ASCIIEncoding());
                     BeginInvoke(new Action(delegate
                     {
                         try
                         {
-                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(bat,
+                            Process.Start(new ProcessStartInfo(bat,
                                 "\"" + UpdateCheck.AppRoot() + "\" \"" + buildDir + "\"") { UseShellExecute = true, WorkingDirectory = buildDir });
                         }
                         catch (Exception ex)
@@ -738,24 +759,26 @@ namespace Muse
         // 供弹窗调用：把链接在当前账号窗口打开
         public void NavigateCurrent(string url)
         {
-            if (IsDisposed) return;
-            if (InvokeRequired) { BeginInvoke(new Action(delegate { NavigateCurrent(url); })); return; }
-            try
+            Ui(delegate
             {
-                WebView2 v = CurrentView();
-                if (v != null) v.Source = new Uri(url);
-            }
-            catch { }
+                try
+                {
+                    WebView2 v = CurrentView();
+                    if (v != null) v.Source = new Uri(url);
+                }
+                catch { }
+            });
         }
 
         // 供选线路对话框调用：切完节点后刷新顶栏线路显示
         public void OnNodePicked(string choice)
         {
-            if (IsDisposed) return;
-            if (InvokeRequired) { BeginInvoke(new Action(delegate { OnNodePicked(choice); })); return; }
-            SetLine(choice);
-            _fail.N = 0;
-            _fail.Alerted = false;
+            Ui(delegate
+            {
+                SetLine(choice);
+                _fail.N = 0;
+                _fail.Alerted = false;
+            });
         }
 
         // ---------- WebView2 视图 ----------
@@ -838,10 +861,7 @@ namespace Muse
                 if (ls.Retries < 2)
                 {
                     ls.Retries++;
-                    var t = new System.Windows.Forms.Timer();
-                    t.Interval = 3000;
-                    t.Tick += delegate { t.Stop(); try { view.Reload(); } catch { } };
-                    t.Start();
+                    App.OneShot(3000, delegate { try { view.Reload(); } catch { } });
                     return;
                 }
                 ls.Retries = 0;
@@ -929,10 +949,7 @@ namespace Muse
                     crashHits.Add(now);
                     if (crashHits.Count <= 3)
                     {
-                        var t = new System.Windows.Forms.Timer();
-                        t.Interval = 1000;
-                        t.Tick += delegate { t.Stop(); try { view.Reload(); } catch { } };
-                        t.Start();
+                        App.OneShot(1000, delegate { try { view.Reload(); } catch { } });
                     }
                 }
                 catch { }
@@ -999,83 +1016,112 @@ namespace Muse
 
         void TrackDownload(CoreWebView2DownloadOperation op, string name)
         {
-            if (InvokeRequired) { BeginInvoke(new Action(delegate { TrackDownload(op, name); })); return; }
-            if (_dlHideTimer == null)
+            Ui(delegate
             {
-                _dlHideTimer = new System.Windows.Forms.Timer();
-                _dlHideTimer.Interval = 5000;
-                _dlHideTimer.Tick += delegate
+                if (_dlHideTimer == null)
                 {
-                    _dlHideTimer.Stop();
-                    if (_dlActive.Count == 0) { _dlLabel.Visible = false; _dlBar.Visible = false; }
-                };
-            }
-            _dlHideTimer.Stop();
-            _dlActive[op] = name;
-            op.BytesReceivedChanged += delegate { DlRefresh(); };
-            op.StateChanged += delegate
-            {
-                try
-                {
-                    if (op.State == CoreWebView2DownloadState.Completed || op.State == CoreWebView2DownloadState.Interrupted)
+                    _dlHideTimer = new System.Windows.Forms.Timer();
+                    _dlHideTimer.Interval = 5000;
+                    _dlHideTimer.Tick += delegate
                     {
-                        bool done = op.State == CoreWebView2DownloadState.Completed;
-                        _dlActive.Remove(op);
-                        if (_dlActive.Count > 0) DlRefresh();
-                        else if (done)
+                        _dlHideTimer.Stop();
+                        if (_dlActive.Count == 0) { _dlLabel.Visible = false; _dlBar.Visible = false; }
+                    };
+                }
+                _dlHideTimer.Stop();
+                _dlActive[op] = name;
+                op.BytesReceivedChanged += delegate { DlRefresh(); };
+                op.StateChanged += delegate
+                {
+                    try
+                    {
+                        if (op.State == CoreWebView2DownloadState.Completed || op.State == CoreWebView2DownloadState.Interrupted)
                         {
-                            _dlBar.Value = 100;
-                            _dlLabel.Text = "下载完成：" + name;
-                            _dlLabel.Visible = true;
-                            _dlBar.Visible = true;
-                            _dlHideTimer.Interval = 5000;
-                            _dlHideTimer.Start();
-                        }
-                        else
-                        {
-                            _dlLabel.Text = "下载失败：" + name;
-                            _dlLabel.Visible = true;
-                            _dlBar.Visible = true;
-                            _dlHideTimer.Interval = 6000;
-                            _dlHideTimer.Start();
+                            bool done = op.State == CoreWebView2DownloadState.Completed;
+                            _dlActive.Remove(op);
+                            if (_dlActive.Count > 0) DlRefresh();
+                            else if (done)
+                            {
+                                _dlBar.Value = 100;
+                                _dlLabel.Text = "下载完成：" + name;
+                                _dlLabel.Visible = true;
+                                _dlBar.Visible = true;
+                                _dlHideTimer.Interval = 5000;
+                                _dlHideTimer.Start();
+                            }
+                            else
+                            {
+                                _dlLabel.Text = "下载失败：" + name;
+                                _dlLabel.Visible = true;
+                                _dlBar.Visible = true;
+                                _dlHideTimer.Interval = 6000;
+                                _dlHideTimer.Start();
+                            }
                         }
                     }
-                }
-                catch { }
-            };
-            DlRefresh();
+                    catch { }
+                };
+                DlRefresh();
+            });
         }
 
         void DlRefresh()
         {
-            if (IsDisposed) return;
-            if (InvokeRequired) { BeginInvoke(new Action(delegate { DlRefresh(); })); return; }
-            try
+            Ui(delegate
             {
-                if (_dlActive.Count == 0) return;
-                CoreWebView2DownloadOperation op = _dlActive.Keys.Last();
-                string nm = _dlActive[op];
-                string extra = _dlActive.Count > 1 ? "（共 " + _dlActive.Count + " 个）" : "";
-                double totalBytes = Convert.ToDouble(op.TotalBytesToReceive);
-                if (totalBytes > 0)
+                try
                 {
-                    int pct = (int)(Convert.ToDouble(op.BytesReceived) * 100.0 / totalBytes);
-                    _dlBar.Style = ProgressBarStyle.Continuous;
-                    _dlBar.Value = Math.Min(100, pct);
-                    _dlLabel.Text = "下载中：" + nm + extra + " " + pct + "%";
+                    if (_dlActive.Count == 0) return;
+                    CoreWebView2DownloadOperation op = _dlActive.Keys.Last();
+                    string nm = _dlActive[op];
+                    string extra = _dlActive.Count > 1 ? "（共 " + _dlActive.Count + " 个）" : "";
+                    double totalBytes = Convert.ToDouble(op.TotalBytesToReceive);
+                    if (totalBytes > 0)
+                    {
+                        int pct = (int)(Convert.ToDouble(op.BytesReceived) * 100.0 / totalBytes);
+                        _dlBar.Style = ProgressBarStyle.Continuous;
+                        _dlBar.Value = Math.Min(100, pct);
+                        _dlLabel.Text = "下载中：" + nm + extra + " " + pct + "%";
+                    }
+                    else
+                    {
+                        _dlBar.Style = ProgressBarStyle.Marquee;
+                        _dlLabel.Text = "下载中：" + nm + extra;
+                    }
+                    _dlLabel.Visible = true;
+                    _dlBar.Visible = true;
                 }
-                else
-                {
-                    _dlBar.Style = ProgressBarStyle.Marquee;
-                    _dlLabel.Text = "下载中：" + nm + extra;
-                }
-                _dlLabel.Visible = true;
-                _dlBar.Visible = true;
-            }
-            catch { }
+                catch { }
+            });
         }
 
         // ---------- 定时器：失效切换 / 线路巡检 / 守卫 / 空间 / 缓存 / 流量 ----------
+        // 在锁定地区内找延迟最低的节点：先试上次记住的节点，再扫策略组（失效切换和巡检两处原来各写了一份）
+        Tuple<string, int> BestNodeInRegion(JArray all, string current, string region)
+        {
+            string sticky = App.GetStr(_settings, "sticky_node", "");
+            if (sticky.Length > 0 && sticky != current && !Regions.IsJunkNode(sticky)
+                && Regions.RegionOf(sticky) == region)
+            {
+                int? d = Regions.NodeDelay(sticky);
+                if (d != null) return Tuple.Create(sticky, d.Value);
+            }
+            Tuple<string, int> best = null;
+            if (all != null)
+            {
+                foreach (JToken c in all)
+                {
+                    string cand = (string)c;
+                    if (cand == current || Regions.IsJunkNode(cand)) continue;
+                    if (Regions.RegionOf(cand) != region) continue;
+                    int? d = Regions.NodeDelay(cand);
+                    if (d != null && (best == null || d.Value < best.Item2))
+                        best = Tuple.Create(cand, d.Value);
+                }
+            }
+            return best;
+        }
+
         void CheckNodes()
         {
             if (_fail.Busy) return;
@@ -1120,30 +1166,7 @@ namespace Muse
                         }
                         return;
                     }
-                    Tuple<string, int> best = null;
-                    string sticky = App.GetStr(_settings, "sticky_node", "");
-                    if (sticky.Length > 0 && sticky != current && !Regions.IsJunkNode(sticky)
-                        && Regions.RegionOf(sticky) == region)
-                    {
-                        int? d = Regions.NodeDelay(sticky);
-                        if (d != null) best = Tuple.Create(sticky, d.Value);
-                    }
-                    if (best == null)
-                    {
-                        JArray all = g.Item2["all"] as JArray;
-                        if (all != null)
-                        {
-                            foreach (JToken c in all)
-                            {
-                                string cand = (string)c;
-                                if (cand == current || Regions.IsJunkNode(cand)) continue;
-                                if (Regions.RegionOf(cand) != region) continue;
-                                int? d = Regions.NodeDelay(cand);
-                                if (d != null && (best == null || d.Value < best.Item2))
-                                    best = Tuple.Create(cand, d.Value);
-                            }
-                        }
-                    }
+                    Tuple<string, int> best = BestNodeInRegion(g.Item2["all"] as JArray, current, region);
                     if (best == null)
                     {
                         ShowStatus("线路「" + current + "」已失效，锁定地区内无可用线路", 15000);
@@ -1160,7 +1183,7 @@ namespace Muse
                         return;
                     }
                     ProxyCore.CoreApi("/proxies/" + Uri.EscapeDataString(g.Item1), "PUT",
-                        App.NewNameObj(best.Item1));
+                        App.NewKVObj("name", best.Item1));
                     _fail.N = 0;
                     _fail.Since = DateTime.MinValue;
                     SetLine(best.Item1 + " " + best.Item2 + "ms");
@@ -1212,34 +1235,11 @@ namespace Muse
                             if (_lineState.Mis >= 2)
                             {
                                 _lineState.Mis = 0;
-                                Tuple<string, int> best = null;
-                                string sticky = App.GetStr(_settings, "sticky_node", "");
-                                if (sticky.Length > 0 && sticky != now && !Regions.IsJunkNode(sticky)
-                                    && Regions.RegionOf(sticky) == locked)
-                                {
-                                    int? d = Regions.NodeDelay(sticky);
-                                    if (d != null) best = Tuple.Create(sticky, d.Value);
-                                }
-                                if (best == null)
-                                {
-                                    JArray all = ginfo["all"] as JArray;
-                                    if (all != null)
-                                    {
-                                        foreach (JToken c in all)
-                                        {
-                                            string cand = (string)c;
-                                            if (cand == now || Regions.IsJunkNode(cand)) continue;
-                                            if (Regions.RegionOf(cand) != locked) continue;
-                                            int? d = Regions.NodeDelay(cand);
-                                            if (d != null && (best == null || d.Value < best.Item2))
-                                                best = Tuple.Create(cand, d.Value);
-                                        }
-                                    }
-                                }
+                                Tuple<string, int> best = BestNodeInRegion(ginfo["all"] as JArray, now, locked);
                                 if (best != null)
                                 {
                                     ProxyCore.CoreApi("/proxies/" + Uri.EscapeDataString(gname), "PUT",
-                                        App.NewNameObj(best.Item1));
+                                        App.NewKVObj("name", best.Item1));
                                     _lineState.Name = best.Item1;
                                     _lineState.DelayT = DateTime.Now;
                                     SetLine(best.Item1 + " " + best.Item2 + "ms");
@@ -1413,10 +1413,7 @@ namespace Muse
             if (idx >= _accounts.Count) return;
             string name = _accounts[idx];
             if (!_views.ContainsKey(name)) CreateViewAsync(name);
-            var t = new System.Windows.Forms.Timer();
-            t.Interval = 2500;
-            t.Tick += delegate { t.Stop(); PrewarmNext(idx + 1); };
-            t.Start();
+            App.OneShot(2500, delegate { PrewarmNext(idx + 1); });
         }
     }
 }

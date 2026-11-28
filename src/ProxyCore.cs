@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using Microsoft.Win32;
 using Newtonsoft.Json.Linq;
 using YamlDotNet.Serialization;
+using System.Net.Sockets;
 
 namespace Muse
 {
@@ -27,7 +28,7 @@ namespace Muse
         {
             try
             {
-                using (var c = new System.Net.Sockets.TcpClient())
+                using (var c = new TcpClient())
                 {
                     IAsyncResult ar = c.BeginConnect("127.0.0.1", port, null, null);
                     bool ok = ar.AsyncWaitHandle.WaitOne(timeoutMs);
@@ -39,37 +40,33 @@ namespace Muse
             catch { return false; }
         }
 
-        static string ReadRegStr(string name)
+        static object ReadReg(string name)
         {
             try
             {
                 using (RegistryKey k = Registry.CurrentUser.OpenSubKey(
                     @"Software\Microsoft\Windows\CurrentVersion\Internet Settings"))
                 {
-                    if (k == null) return "";
-                    object v = k.GetValue(name);
-                    return v == null ? "" : v.ToString();
+                    if (k == null) return null;
+                    return k.GetValue(name);
                 }
             }
-            catch { return ""; }
+            catch { return null; }
+        }
+
+        static string ReadRegStr(string name)
+        {
+            object v = ReadReg(name);
+            return v == null ? "" : v.ToString();
         }
 
         static int ReadRegInt(string name)
         {
-            try
-            {
-                using (RegistryKey k = Registry.CurrentUser.OpenSubKey(
-                    @"Software\Microsoft\Windows\CurrentVersion\Internet Settings"))
-                {
-                    if (k == null) return 0;
-                    object v = k.GetValue(name);
-                    if (v is int) return (int)v;
-                    int n;
-                    if (v != null && int.TryParse(v.ToString(), out n)) return n;
-                    return 0;
-                }
-            }
-            catch { return 0; }
+            object v = ReadReg(name);
+            if (v is int) return (int)v;
+            int n;
+            if (v != null && int.TryParse(v.ToString(), out n)) return n;
+            return 0;
         }
 
         static string PickProxyServer(string server)
@@ -180,7 +177,7 @@ namespace Muse
             if (exe != null) return exe;
             try
             {
-                using (System.IO.Stream rs = typeof(App).Assembly.GetManifestResourceStream("Muse.mihomo.exe"))
+                using (Stream rs = typeof(App).Assembly.GetManifestResourceStream("Muse.mihomo.exe"))
                 {
                     if (rs == null) return null;
                     Directory.CreateDirectory(App.CoreDir());
@@ -195,24 +192,10 @@ namespace Muse
             catch { return null; }
         }
 
+        // geoip.metadb 也是同一套释放逻辑（名字+大小不同而已），别再写第二份
         public static bool EnsureMmdb()
         {
-            try
-            {
-                string target = Path.Combine(App.CoreDir(), "geoip.metadb");
-                if (File.Exists(target) && new FileInfo(target).Length == App.MmdbSize) return true;
-                using (System.IO.Stream rs = typeof(App).Assembly.GetManifestResourceStream("Muse.geoip.metadb"))
-                {
-                    if (rs == null) return false;
-                    Directory.CreateDirectory(App.CoreDir());
-                    using (FileStream f = new FileStream(target, FileMode.Create, FileAccess.Write))
-                    {
-                        rs.CopyTo(f);
-                    }
-                    return new FileInfo(target).Length == App.MmdbSize;
-                }
-            }
-            catch { return false; }
+            return EnsureOneGeodata("geoip.metadb", App.MmdbSize);
         }
 
         // 地理数据：GEOSITE 规则要 geosite.dat，geodata-mode 开时 GEOIP 要 geoip.dat。
@@ -232,7 +215,7 @@ namespace Muse
             {
                 string target = Path.Combine(App.CoreDir(), name);
                 if (File.Exists(target) && new FileInfo(target).Length == size) return true;
-                using (System.IO.Stream rs = typeof(App).Assembly.GetManifestResourceStream("Muse." + name))
+                using (Stream rs = typeof(App).Assembly.GetManifestResourceStream("Muse." + name))
                 {
                     if (rs == null) return false;
                     Directory.CreateDirectory(App.CoreDir());
@@ -466,11 +449,13 @@ namespace Muse
         }
 
         // ---- 订阅 ----
-        static Tuple<Dictionary<object, object>, string> FetchSubCfg(string url)
+        // 带代理回退的 HTTP 请求：按给定的代理候选一个个试，最后直连；每个候选独立超时。
+        // 订阅下载、更新检查、更新包下载原来各写了一份同样的循环，合到这里。
+        public static T FetchViaProxies<T>(string url, string userAgent, int timeoutS,
+            IEnumerable<string> proxies, Func<HttpClient, T> fetch)
         {
-            string text = null;
             Exception lastErr = null;
-            foreach (string proxy in new string[] { AutoProxyUrl(), "" })
+            foreach (string proxy in proxies)
             {
                 try
                 {
@@ -479,14 +464,26 @@ namespace Muse
                     else { h.UseProxy = true; h.Proxy = new WebProxy(proxy); }
                     using (var c = new HttpClient(h))
                     {
-                        c.Timeout = TimeSpan.FromSeconds(15);
-                        c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "clash.meta");
-                        text = c.GetStringAsync(url).GetAwaiter().GetResult();
+                        c.Timeout = TimeSpan.FromSeconds(timeoutS);
+                        c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", userAgent);
+                        return fetch(c);
                     }
-                    break;
                 }
                 catch (Exception ex) { lastErr = ex; }
             }
+            throw lastErr ?? new Exception("请求失败");
+        }
+
+        static Tuple<Dictionary<object, object>, string> FetchSubCfg(string url)
+        {
+            string text = null;
+            Exception lastErr = null;
+            try
+            {
+                text = FetchViaProxies(url, "clash.meta", 15, new string[] { AutoProxyUrl(), "" },
+                    delegate (HttpClient c) { return c.GetStringAsync(url).GetAwaiter().GetResult(); });
+            }
+            catch (Exception ex) { lastErr = ex; }
             if (text == null) return Tuple.Create<Dictionary<object, object>, string>(null, "下载失败：" + ShortErr(lastErr));
             try
             {
@@ -743,7 +740,7 @@ namespace Muse
                 {
                     try
                     {
-                        CoreApi("/configs", "PUT", App.NewPathObj(cfg));
+                        CoreApi("/configs", "PUT", App.NewKVObj("path", cfg));
                     }
                     catch { }
                 }

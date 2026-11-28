@@ -54,6 +54,9 @@
     <Compile Include="src\PopupForm.cs" />
     <Compile Include="src\ProxyDialog.cs" />
     <Compile Include="src\NodePickerDialog.cs" />
+    <Compile Include="src\AppIcon.cs" />
+    <Compile Include="src\UpdateCheck.cs" />
+    <Compile Include="src\UpdatePromptForm.cs" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="res\mihomo.exe">
@@ -61,6 +64,12 @@
     </EmbeddedResource>
     <EmbeddedResource Include="res\geoip.metadb">
       <LogicalName>Muse.geoip.metadb</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="res\geosite.dat">
+      <LogicalName>Muse.geosite.dat</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="res\geoip.dat">
+      <LogicalName>Muse.geoip.dat</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>

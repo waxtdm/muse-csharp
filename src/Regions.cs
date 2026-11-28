@@ -132,20 +132,8 @@ namespace Muse
                 JObject info = p.Value as JObject;
                 if (info == null) continue;
                 JArray all = info["all"] as JArray;
-                if ((string)info["type"] == "Selector" && all != null && all.Count > 0
-                    && p.Name != "GLOBAL")
+                if ((string)info["type"] == "Selector" && all != null && all.Count > 0)
                     groups.Add(Tuple.Create(p.Name, info));
-            }
-            if (groups.Count == 0)
-            {
-                foreach (JProperty p in proxies.Properties())
-                {
-                    JObject info = p.Value as JObject;
-                    if (info == null) continue;
-                    JArray all = info["all"] as JArray;
-                    if ((string)info["type"] == "Selector" && all != null && all.Count > 0)
-                        groups.Add(Tuple.Create(p.Name, info));
-                }
             }
             if (groups.Count == 0) return Tuple.Create<string, JObject>(null, null);
             var refs = new Dictionary<string, int>();
@@ -172,6 +160,11 @@ namespace Muse
                 int lb = ((JArray)b.Item2["all"]).Count;
                 return lb.CompareTo(la);
             });
+            // 排好序后取第一个非 GLOBAL 的；全是 GLOBAL 时就取第一个——和原来“先排除 GLOBAL、没有再全量扫”一样
+            foreach (Tuple<string, JObject> g in groups)
+            {
+                if (g.Item1 != "GLOBAL") return g;
+            }
             return groups[0];
         }
     }

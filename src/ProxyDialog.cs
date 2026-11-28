@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Newtonsoft.Json.Linq;
+using System.IO;
 
 namespace Muse
 {
@@ -45,48 +46,40 @@ namespace Muse
             scroll.Controls.Add(t);
 
             int row = 0;
-            Action<Control, int> addRow = delegate (Control c, int gap)
-            {
-                t.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-                c.Margin = new Padding(0, 0, 0, gap);
-                t.Controls.Add(c, 0, row);
-                row++;
-            };
-
             Label cur = new Label();
             cur.Text = "当前生效：" + App.LastProxyDesc;
             cur.AutoSize = true;
             cur.MaximumSize = new Size(512, 0);
-            addRow(cur, 6);
+            App.AddRow(t, ref row, cur, 6);
 
             _statusLabel = new Label();
             _statusLabel.Text = "核心状态：" + App.CoreState;
             _statusLabel.AutoSize = true;
             _statusLabel.MaximumSize = new Size(512, 0);
-            addRow(_statusLabel, 8);
+            App.AddRow(t, ref row, _statusLabel, 8);
 
             _coreChk = new CheckBox();
             _coreChk.Text = "启用内置代理核心（不用再单独开 Clash Meta）";
             _coreChk.AutoSize = true;
             _coreChk.Checked = App.GetBool(_settings, "core_enabled", true);
-            addRow(_coreChk, 2);
+            App.AddRow(t, ref row, _coreChk, 2);
 
             _failChk = new CheckBox();
             _failChk.Text = "线路失效自动切换（只在手动锁定的地区内切，绝不跨区、绝不自选地区）";
             _failChk.AutoSize = true;
             _failChk.Checked = App.GetBool(_settings, "auto_failover", true);
-            addRow(_failChk, 2);
+            App.AddRow(t, ref row, _failChk, 2);
 
             _localChk = new CheckBox();
             _localChk.Text = "启用本地代理（自动识别系统代理/本机端口，内置代理用不了时兜底）";
             _localChk.AutoSize = true;
             _localChk.Checked = App.GetBool(_settings, "use_local_proxy", false);
-            addRow(_localChk, 8);
+            App.AddRow(t, ref row, _localChk, 8);
 
             _hintLabel = new Label();
             _hintLabel.AutoSize = true;
             _hintLabel.MaximumSize = new Size(512, 0);
-            addRow(_hintLabel, 4);
+            App.AddRow(t, ref row, _hintLabel, 4);
             _coreChk.CheckedChanged += delegate { _hintLabel.Text = "设置已改动，点「保存并重启」后生效"; };
             _failChk.CheckedChanged += delegate { _hintLabel.Text = "设置已改动，点「保存并重启」后生效"; };
             _localChk.CheckedChanged += delegate { _hintLabel.Text = "设置已改动，点「保存并重启」后生效"; };
@@ -97,12 +90,12 @@ namespace Muse
                 + "；在「选择线路」里手动选一次即锁定其地区";
             lockLbl.AutoSize = true;
             lockLbl.MaximumSize = new Size(512, 0);
-            addRow(lockLbl, 6);
+            App.AddRow(t, ref row, lockLbl, 6);
 
             Label subLbl = new Label();
             subLbl.Text = "订阅链接（可加多个，所有订阅的节点会合并到一起用）：";
             subLbl.AutoSize = true;
-            addRow(subLbl, 4);
+            App.AddRow(t, ref row, subLbl, 4);
 
             _subsList = new ListBox();
             _subsList.Dock = DockStyle.Fill;
@@ -118,10 +111,10 @@ namespace Muse
             srow.WrapContents = false;
             _nameEdit = new TextBox();
             _nameEdit.Width = 90;
-            SetCue(_nameEdit, "名称（可空）");
+            App.SetCue(_nameEdit, "名称（可空）");
             _urlEdit = new TextBox();
             _urlEdit.Width = 250;
-            SetCue(_urlEdit, "粘贴订阅链接");
+            App.SetCue(_urlEdit, "粘贴订阅链接");
             Button addBtn = new Button();
             addBtn.Text = "添加订阅";
             addBtn.AutoSize = true;
@@ -134,7 +127,7 @@ namespace Muse
             srow.Controls.Add(_urlEdit);
             srow.Controls.Add(addBtn);
             srow.Controls.Add(delBtn);
-            addRow(srow, 6);
+            App.AddRow(t, ref row, srow, 6);
 
             var row0 = new FlowLayoutPanel();
             row0.AutoSize = true;
@@ -149,7 +142,7 @@ namespace Muse
             _nodeBtn.Click += delegate { new NodePickerDialog(_main, _settings).ShowDialog(this); };
             row0.Controls.Add(_updBtn);
             row0.Controls.Add(_nodeBtn);
-            addRow(row0, 6);
+            App.AddRow(t, ref row, row0, 6);
 
             var row2 = new FlowLayoutPanel();
             row2.AutoSize = true;
@@ -164,17 +157,15 @@ namespace Muse
             cancelBtn.Click += delegate { DialogResult = DialogResult.Cancel; Close(); };
             row2.Controls.Add(_saveBtn);
             row2.Controls.Add(cancelBtn);
-            addRow(row2, 0);
+            App.AddRow(t, ref row, row2, 0);
         }
 
 
-        // .NET Framework 4.8 的 TextBox 没有 PlaceholderText，用 cue banner 实现
-        [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
-        static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, string lParam);
-
-        static void SetCue(TextBox tb, string text)
+        JArray SubsArray()
         {
-            try { SendMessage(tb.Handle, 0x1501, (IntPtr)1, text); } catch { }
+            var arr = new JArray();
+            foreach (JObject e in _subEntries) arr.Add((JObject)e.DeepClone());
+            return arr;
         }
 
         void RebuildSubs(int? selectRow)
@@ -277,20 +268,18 @@ namespace Muse
                     App.Set(_settings, "core_enabled", coreOn);
                     App.Set(_settings, "auto_failover", failOn);
                     App.Set(_settings, "use_local_proxy", localOn);
-                    var arr = new JArray();
-                    foreach (JObject e in _subEntries) arr.Add((JObject)e.DeepClone());
-                    _settings["sub_urls"] = arr;
+                    _settings["sub_urls"] = SubsArray();
                     App.Set(_settings, "sub_url", urls[0]);
                     App.SaveSettings(_settings);
                     if (ok)
                     {
-                        string cfg = System.IO.Path.Combine(App.CoreDir(), "config.yaml");
+                        string cfg = Path.Combine(App.CoreDir(), "config.yaml");
                         if (ProxyCore.CoreAlive())
                         {
                             bool reloaded = false;
                             try
                             {
-                                ProxyCore.CoreApi("/configs", "PUT", App.NewPathObj(cfg));
+                                ProxyCore.CoreApi("/configs", "PUT", App.NewKVObj("path", cfg));
                                 reloaded = true;
                             }
                             catch { reloaded = ProxyCore.CoreAlive(); }
@@ -335,9 +324,7 @@ namespace Muse
             App.Set(_settings, "auto_failover", _failChk.Checked);
             App.Set(_settings, "use_local_proxy", _localChk.Checked);
             if (_urlEdit.Text.Trim().Length > 0) DoAddSub();
-            var arr = new JArray();
-            foreach (JObject e in _subEntries) arr.Add((JObject)e.DeepClone());
-            _settings["sub_urls"] = arr;
+            _settings["sub_urls"] = SubsArray();
             if (_subEntries.Count > 0) App.Set(_settings, "sub_url", (string)_subEntries[0]["url"]);
             App.SaveSettings(_settings);
             DialogResult = DialogResult.OK;

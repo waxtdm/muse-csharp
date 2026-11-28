@@ -1,10 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Net.Http;
 using System.IO;
 using System.IO.Compression;
-using System.Net;
 using System.Text;
 using System.Windows.Forms;
 using Newtonsoft.Json.Linq;
@@ -48,50 +46,17 @@ namespace Muse
 
         public static JObject FetchVersion()
         {
-            Exception lastErr = null;
-            foreach (string proxy in ProxyCandidates())
-            {
-                try
-                {
-                    var h = new HttpClientHandler();
-                    if (proxy.Length == 0) h.UseProxy = false;
-                    else { h.UseProxy = true; h.Proxy = new WebProxy(proxy); }
-                    using (var c = new HttpClient(h))
-                    {
-                        c.Timeout = TimeSpan.FromSeconds(15);
-                        c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "Muse-Updater");
-                        string json = c.GetStringAsync(App.UpdateUrl).GetAwaiter().GetResult();
-                        return JObject.Parse(json);
-                    }
-                }
-                catch (Exception ex) { lastErr = ex; }
-            }
-            throw lastErr ?? new Exception("取不到更新信息");
+            string json = ProxyCore.FetchViaProxies(App.UpdateUrl, "Muse-Updater", 15, ProxyCandidates(),
+                delegate (HttpClient c) { return c.GetStringAsync(App.UpdateUrl).GetAwaiter().GetResult(); });
+            return JObject.Parse(json);
         }
 
         // 下更新包：同样先走代理再直连，60 秒超时
         public static void DownloadFile(string url, string path)
         {
-            Exception lastErr = null;
-            foreach (string proxy in ProxyCandidates())
-            {
-                try
-                {
-                    var h = new HttpClientHandler();
-                    if (proxy.Length == 0) h.UseProxy = false;
-                    else { h.UseProxy = true; h.Proxy = new WebProxy(proxy); }
-                    using (var c = new HttpClient(h))
-                    {
-                        c.Timeout = TimeSpan.FromSeconds(60);
-                        c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "Muse-Updater");
-                        byte[] data = c.GetByteArrayAsync(url).GetAwaiter().GetResult();
-                        File.WriteAllBytes(path, data);
-                        return;
-                    }
-                }
-                catch (Exception ex) { lastErr = ex; }
-            }
-            throw lastErr ?? new Exception("下载失败");
+            byte[] data = ProxyCore.FetchViaProxies(url, "Muse-Updater", 60, ProxyCandidates(),
+                delegate (HttpClient c) { return c.GetByteArrayAsync(url).GetAwaiter().GetResult(); });
+            File.WriteAllBytes(path, data);
         }
 
 
@@ -135,7 +100,7 @@ namespace Muse
                     else if (method == 8)
                     {
                         using (MemoryStream ms = new MemoryStream(buf, dataOff, csize))
-                        using (System.IO.Compression.DeflateStream ds = new System.IO.Compression.DeflateStream(ms, System.IO.Compression.CompressionMode.Decompress))
+                        using (DeflateStream ds = new DeflateStream(ms, CompressionMode.Decompress))
                         {
                             ds.CopyTo(f);
                         }
