@@ -33,7 +33,11 @@ namespace Muse
         FlowLayoutPanel _bar;
         Panel _topPanel;
         Panel _accHost;
-        MenuStrip _menu;
+        FlowLayoutPanel _leftBar;
+        Button _cfgBtn;
+        Button _accBtn;
+        ContextMenuStrip _cfgMenu;
+        ContextMenuStrip _accMenu;
         Label _nodeLabel;
         Panel _host;
         StatusStrip _status;
@@ -122,31 +126,37 @@ namespace Muse
             _bar.Location = new Point(0, 0);
             _bar.Anchor = AnchorStyles.Top | AnchorStyles.Left;
             _accHost.Controls.Add(_bar);
-            // 菜单栏（记事本式）：工具 / 帐号管理 两个下拉
-            _menu = new MenuStrip();
-            _menu.Dock = DockStyle.Left;
-            _menu.GripStyle = ToolStripGripStyle.Hidden;
-            _menu.BackColor = Color.FromArgb(199, 237, 204);
-            ToolStripMenuItem toolMenu = new ToolStripMenuItem("工具");
-            toolMenu.DropDownItems.Add("代理设置", null, delegate { new ProxyDialog(this, _settings).ShowDialog(this); });
-            toolMenu.DropDownItems.Add("检查更新", null, delegate { CheckUpdate(true); });
-            ToolStripMenuItem accMenu = new ToolStripMenuItem("帐号管理");
-            accMenu.DropDownItems.Add("添加帐号", null, delegate { AddAccount(); });
-            accMenu.DropDownItems.Add("删除当前帐号", null, delegate { DeleteCurrent(); });
-            _menu.Items.Add(toolMenu);
-            _menu.Items.Add(accMenu);
-            _nodeLabel = new Label();
-            _nodeLabel.Dock = DockStyle.Right;
-            _nodeLabel.Width = 300;
-            _nodeLabel.AutoSize = false;
-            _nodeLabel.AutoEllipsis = true;
-            _nodeLabel.TextAlign = ContentAlignment.MiddleRight;
-            _nodeLabel.Font = new Font("微软雅黑", 9f);
-            _nodeLabel.Text = "—";
-            // Dock 顺序：先加 Fill，再加 Right，最后加 Left
+            // 左侧固定菜单按钮（记事本式下拉，用按钮 + 右键菜单实现，不用 MenuStrip：
+            // MenuStrip 一 Dock=Left 就会被排成竖向，第二项会被 38px 高的顶栏裁掉看不见，
+            // v17 的“帐号管理”就是这么丢的，实测 MenuStrip 宽只有 87px、第二项叠在第一项下面）
+            _leftBar = new FlowLayoutPanel();
+            _leftBar.Dock = DockStyle.Left;
+            _leftBar.AutoSize = true;
+            _leftBar.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            _leftBar.WrapContents = false;
+            _leftBar.Padding = new Padding(2, 2, 2, 2);
+            _leftBar.BackColor = Color.FromArgb(199, 237, 204);
+            _cfgMenu = new ContextMenuStrip();
+            _cfgMenu.Items.Add("代理设置", null, delegate { new ProxyDialog(this, _settings).ShowDialog(this); });
+            _cfgMenu.Items.Add("检查更新", null, delegate { CheckUpdate(true); });
+            _cfgBtn = new Button();
+            _cfgBtn.Text = "配置 ▾";
+            _cfgBtn.AutoSize = true;
+            _cfgBtn.Click += delegate { _cfgMenu.Show(_cfgBtn, new Point(0, _cfgBtn.Height)); };
+            _accMenu = new ContextMenuStrip();
+            _accMenu.Items.Add("添加帐号", null, delegate { AddAccount(); });
+            _accMenu.Items.Add("删除当前帐号", null, delegate { DeleteCurrent(); });
+            _accBtn = new Button();
+            _accBtn.Text = "帐号管理 ▾";
+            _accBtn.AutoSize = true;
+            _accBtn.Click += delegate { _accMenu.Show(_accBtn, new Point(0, _accBtn.Height)); };
+            _leftBar.Controls.Add(_cfgBtn);
+            _leftBar.Controls.Add(_accBtn);
+            // 右上角节点信息已取消：底栏状态条里已有节点 + 速率 + 时间，不再重复显示
+            _nodeLabel = null;
+            // Dock 顺序：先加 Fill，再加 Left
             _topPanel.Controls.Add(_accHost);
-            _topPanel.Controls.Add(_nodeLabel);
-            _topPanel.Controls.Add(_menu);
+            _topPanel.Controls.Add(_leftBar);
             Controls.Add(_topPanel);
 
             _host = new Panel();
