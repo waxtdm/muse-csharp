@@ -157,11 +157,14 @@ namespace Muse
             // Dock 顺序：先加 Fill，再加 Left
             _topPanel.Controls.Add(_accHost);
             _topPanel.Controls.Add(_leftBar);
-            Controls.Add(_topPanel);
 
             _host = new Panel();
             _host.Dock = DockStyle.Fill;
+            // 窗体级 Dock 顺序：Fill 必须先加，Top/Bottom 后加，否则 Fill 会占满整个窗口、
+            // 顶栏（38px）盖在网页上面，页面顶上一截（比如侧栏搜索框）就被盖住看不见，
+            // v20 之前就是这么丢的，实测 _host 从 Y=0 开始、顶栏正好盖掉 38px。
             Controls.Add(_host);
+            Controls.Add(_topPanel);
 
             _status = new StatusStrip();
             _statusLabel = new ToolStripStatusLabel("");
@@ -399,6 +402,19 @@ namespace Muse
             _bar.Controls.Clear();
             _accButtons.Clear();
             // 代理设置 / 检查更新 已收进左上角“工具”下拉；添加 / 删除账号已收进“帐号管理”下拉
+            // “✕ 关闭”：关掉当前页回到上一个页面（比如 Meta 账户页 → 回 muse.ai），
+            // 没上一个页面时回主页；代替关整个程序的右上角 X。
+            AddBarButton("✕ 关闭", delegate
+            {
+                WebView2 v = CurrentView();
+                if (v == null) return;
+                try
+                {
+                    if (v.CanGoBack) v.GoBack();
+                    else v.Source = new Uri("https://muse.ai");
+                }
+                catch { }
+            });
             AddBarButton("刷新", delegate { WebView2 v = CurrentView(); if (v != null) v.Reload(); });
             AddBarButton("主页", delegate { WebView2 v = CurrentView(); if (v != null) v.Source = new Uri("https://muse.ai"); });
             foreach (string name in _accounts)
@@ -887,9 +903,9 @@ namespace Muse
                         RestartApp();
                 }
             };
-            // 新窗口（比如设置里的“Meta 账户”）直接用系统默认浏览器（Edge）打开一个独立窗口，
-            // 不再推给主窗口：v19 推给主窗口后，Meta 账户页占了主窗口、没有单独的关闭 X，
-            // 只能点主窗口右上角的 X，等于把 Muse 也关了。独立窗口自带关闭 X，主窗口不动。
+            // 新窗口（比如设置里的“Meta 账户”）在当前主视图里打开：v20 试过用 Edge 独立窗口，
+            // 但 Edge 里没有程序里那个账号的登录态、要重新登录，用户嫌麻烦，改回主窗口；
+            // 主窗口顶栏新加了“✕ 关闭”按钮，点一下就回到上一个页面，等于把当前页关了。
             core.NewWindowRequested += delegate (object s, CoreWebView2NewWindowRequestedEventArgs e)
             {
                 try
@@ -897,10 +913,7 @@ namespace Muse
                     if (!string.IsNullOrEmpty(e.Uri))
                     {
                         Uri u = new Uri(e.Uri);
-                        if (u.Scheme == "http" || u.Scheme == "https")
-                        {
-                            try { Process.Start(new ProcessStartInfo(e.Uri) { UseShellExecute = true }); } catch { }
-                        }
+                        if (u.Scheme == "http" || u.Scheme == "https") NavigateCurrent(e.Uri);
                     }
                     e.Handled = true;
                 }
